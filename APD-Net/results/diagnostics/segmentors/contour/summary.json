@@ -1,0 +1,21 @@
+{
+  "target_mode": "contour",
+  "best_epoch": 59,
+  "threshold": 0.7,
+  "images": 200,
+  "target_dice": 0.26922214881965706,
+  "target_iou": 0.15747018838298973,
+  "target_hd95_pixels": 5.622031126578807,
+  "target_asd_pixels": 1.8512889469141256,
+  "contour_dice": 0.26922214881965706,
+  "contour_iou": 0.15747018838298973,
+  "contour_hd95_pixels": 5.622031126578807,
+  "contour_asd_pixels": 1.8512889469141256,
+  "boundary_f1_1px": 0.5670330429037038,
+  "boundary_f1_2px": 0.7512745915305191,
+  "boundary_f1_3px": 0.8750339900121799,
+  "boundary_f1_5px": 0.9588945259831576,
+  "hc_predicted_mm": 174.50876266785417,
+  "hc_error_mm": 4.798557786601436,
+  "hc_error_mm_median": 2.6665832386111674
+}

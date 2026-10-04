@@ -1,0 +1,13 @@
+experiment,method,images,psnr,ssim,mae,gradient_error,dice,iou,hd95_pixels,hc_mae_mm,split,notes
+synthetic_denoising,Noisy,200,27.0703,0.7399,0.02522,0.03581,,,,,validation,sigma=0.2 synthetic reference
+synthetic_denoising,Median,200,35.1392,0.9404,0.00952,0.00988,,,,,validation,sigma=0.2 synthetic reference
+synthetic_denoising,Gaussian,200,34.3745,0.9504,0.00906,0.00982,,,,,validation,sigma=0.2 synthetic reference
+synthetic_denoising,Bilateral,200,34.5779,0.9396,0.00977,0.01092,,,,,validation,sigma=0.2 synthetic reference
+synthetic_denoising,TV-Chambolle,200,33.8422,0.9141,0.01227,0.00998,,,,,validation,sigma=0.2 synthetic reference
+synthetic_denoising,USDRIFT2D,200,35.7933,0.9478,0.00871,0.00987,,,,,validation,sigma=0.2 synthetic reference
+downstream_segmentation,Original,200,,,,,0.2174,0.1226,39.2479,86.0794,validation,fixed preliminary U-Net checkpoint
+downstream_segmentation,Noisy,200,,,,,0.2171,0.1224,37.1597,85.8478,validation,fixed preliminary U-Net checkpoint
+downstream_segmentation,Gaussian,200,,,,,0.2172,0.1225,39.9116,89.4861,validation,fixed preliminary U-Net checkpoint
+downstream_segmentation,Bilateral,200,,,,,0.2171,0.1224,39.5811,89.1681,validation,fixed preliminary U-Net checkpoint
+downstream_segmentation,TV-Chambolle,200,,,,,0.2150,0.1211,42.5106,95.0853,validation,fixed preliminary U-Net checkpoint
+downstream_segmentation,USDRIFT2D,200,,,,,0.2161,0.1218,41.0354,92.3493,validation,fixed preliminary U-Net checkpoint

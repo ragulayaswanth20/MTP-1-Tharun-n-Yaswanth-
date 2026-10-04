@@ -1,0 +1,11 @@
+seed: 20260920
+image_size: 256
+batch_size: 16
+epochs: 20
+learning_rate: 0.0002
+base_channels: 16
+bce_positive_weight: 20.0
+num_workers: 0
+output_dir: experiments/segmentation_baseline
+train_split: splits/train.csv
+val_split: splits/val.csv

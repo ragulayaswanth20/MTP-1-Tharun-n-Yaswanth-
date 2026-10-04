@@ -1,0 +1,9 @@
+[submodule "GRN"]
+	path = GRN
+	url = https://github.com/Francisdadada/GRN.git
+[submodule "MedGS"]
+	path = MedGS
+	url = https://github.com/gmum/MedGS.git
+[submodule "UltraGS"]
+	path = UltraGS
+	url = https://github.com/Bean-Young/UltraGS.git

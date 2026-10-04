@@ -1,0 +1,24 @@
+{
+  "dataset": "HC18",
+  "split": "validation",
+  "synthetic_reference": true,
+  "sigma": 0.2,
+  "results": [
+    {
+      "method": "Noisy",
+      "images": 200,
+      "psnr": 27.10382843017578,
+      "ssim": 0.8150231934472812,
+      "mae": 0.02528075873851776,
+      "gradient_error": 0.03628012165427208
+    },
+    {
+      "method": "APD-Net",
+      "images": 200,
+      "psnr": 34.586769104003906,
+      "ssim": 0.9510919358945533,
+      "mae": 0.011018550023436546,
+      "gradient_error": 0.014080478809773922
+    }
+  ]
+}

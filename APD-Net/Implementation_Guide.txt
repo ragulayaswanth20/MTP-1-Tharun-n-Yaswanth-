@@ -1,0 +1,2459 @@
+Yes. Below is a **single master prompt** you can give to **GitHub Copilot Agent / Cursor / Claude Code** to build the complete project: preprocessing → proposed model → training → baselines → HC18 evaluation → segmentation → ablation → statistics → plots → tables → comparison.
+
+One important methodological point: **HC18 provides ultrasound images and fetal-head annotations/HC measurements, but it is not a paired noisy/clean denoising dataset.** Therefore, the implementation below must **not falsely report PSNR/SSIM against a true clean image**. It will use controlled synthetic speckle corruption for paired PSNR/SSIM experiments and use segmentation/anatomical/no-reference metrics for real HC18 images.
+
+The GRN paper is useful as a conceptual baseline because its generator is optimized using segmentation feedback, but the paper's own evaluation is primarily segmentation-oriented; its limitations also include limited 3-D ultrasound external validation and lack of direct denoising evaluation.  
+
+---
+
+# MASTER IMPLEMENTATION PROMPT
+
+Copy everything below into **GitHub Copilot Agent**.
+
+```text
+You are an expert medical-imaging deep-learning engineer and researcher.
+
+I want you to build a COMPLETE, REPRODUCIBLE research project for a novel ultrasound speckle-denoising framework.
+
+Do NOT only provide pseudocode.
+Do NOT leave TODO placeholders for core functionality.
+Actually create the complete Python/PyTorch project, configuration files, training scripts, evaluation scripts, visualization scripts, logging, checkpoints, metrics, tables and README.
+
+The project must be runnable on a single NVIDIA GPU and must gracefully support CPU debugging.
+
+============================================================
+1. RESEARCH OBJECTIVE
+============================================================
+
+Research question:
+
+"Can we develop a deep-learning framework that removes ultrasound speckle while preserving anatomical structures and improving downstream segmentation performance across ultrasound datasets?"
+
+The project should investigate:
+
+1. Speckle suppression
+2. Anatomical structure preservation
+3. Edge/boundary preservation
+4. Image reconstruction quality
+5. Downstream segmentation performance
+6. Cross-dataset generalization
+7. Ablation of every proposed component
+
+The primary dataset is HC18 fetal-head ultrasound.
+
+The HC18 files may be supplied as:
+
+training_set.zip
+test_set.zip
+training_set_pixel_size_and_HC.csv
+test_set_pixel_size.csv
+
+Do not assume exact filenames if they differ.
+Create a configurable dataset root in config.yaml.
+
+============================================================
+2. IMPORTANT DATASET CONSTRAINT
+============================================================
+
+HC18 does NOT provide a true clean ultrasound image paired with each noisy image.
+
+Therefore:
+
+NEVER claim that HC18 provides ground-truth clean images.
+
+For PSNR/SSIM experiments create a SYNTHETIC SPECKLE BENCHMARK:
+
+Original HC18 image:
+    I_clean_proxy
+
+Synthetic speckle:
+    N
+
+Corrupted image:
+    I_noisy = I_clean_proxy * N
+
+The original image is only a pseudo-clean/reference image for the synthetic corruption experiment.
+
+Clearly label results as:
+
+"synthetic speckle reconstruction"
+
+and NOT:
+
+"real-world ground-truth denoising".
+
+For real HC18 images use:
+
+- segmentation performance
+- boundary preservation
+- CNR where regions can be defined
+- SNR
+- ENL where meaningful
+- edge preservation index
+- gradient preservation
+- qualitative expert/visual assessment if possible
+
+Do not fabricate true-clean PSNR/SSIM for real HC18.
+
+============================================================
+3. PROJECT NAME
+============================================================
+
+Use project name:
+
+AnatomyPreserveUS
+
+Suggested model name:
+
+APD-Net
+
+Full name:
+
+Anatomy-Preserving Speckle Denoising Network
+
+The final model should be:
+
+APD-Net
+
+with these major components:
+
+A. Speckle-aware denoising encoder-decoder
+B. Multi-scale residual feature extraction
+C. Edge/anatomical preservation branch
+D. Structural similarity constraint
+E. Segmentation-aware task feedback
+F. Optional uncertainty/confidence estimation
+G. Multi-objective loss
+
+============================================================
+4. HIGH-LEVEL PIPELINE
+============================================================
+
+Implement:
+
+                 Noisy Ultrasound
+                         |
+                         v
+                +----------------+
+                |  APD-Net       |
+                | Denoising      |
+                | Network        |
+                +-------+--------+
+                        |
+                        v
+                 Denoised Image
+                    /       \
+                   /         \
+                  v           v
+          Image Evaluation   Segmentor
+                              |
+                              v
+                       Fetal Head Mask
+
+Training:
+
+I_noisy
+   |
+   v
+D_theta
+   |
+   v
+I_hat_clean
+   |
+   +---- L_pixel
+   |
+   +---- L_SSIM
+   |
+   +---- L_edge
+   |
+   +---- L_speckle
+   |
+   +---- L_frequency
+   |
+   +---- L_seg
+   |
+   v
+Total loss
+
+
+============================================================
+5. MATHEMATICAL FORMULATION
+============================================================
+
+Implement the following.
+
+Let:
+
+I_c = reference/pseudo-clean image
+I_n = noisy ultrasound image
+D_theta = denoising network
+I_hat = D_theta(I_n)
+
+For synthetic corruption:
+
+I_n = I_c * N
+
+where N is multiplicative speckle noise.
+
+Use log-domain representation where appropriate:
+
+log(I_n + epsilon)
+=
+log(I_c + epsilon)
++
+log(N + epsilon)
+
+------------------------------------------------------------
+5.1 Pixel Reconstruction Loss
+------------------------------------------------------------
+
+L_pixel = SmoothL1(I_hat, I_c)
+
+Support L1 and Charbonnier as configurable options.
+
+Charbonnier:
+
+L_char =
+sqrt((I_hat - I_c)^2 + epsilon^2)
+
+------------------------------------------------------------
+5.2 SSIM Loss
+------------------------------------------------------------
+
+L_ssim = 1 - SSIM(I_hat, I_c)
+
+Implement differentiable SSIM.
+
+Allow:
+
+window_size = 11
+sigma = 1.5
+
+as configurable parameters.
+
+------------------------------------------------------------
+5.3 Edge Preservation Loss
+------------------------------------------------------------
+
+Compute Sobel gradients:
+
+Gx(I)
+Gy(I)
+
+and:
+
+G(I) = sqrt(Gx^2 + Gy^2 + epsilon)
+
+Then:
+
+L_edge =
+mean(abs(G(I_hat) - G(I_c)))
+
+Also support Laplacian loss:
+
+L_lap =
+mean(abs(Laplacian(I_hat) - Laplacian(I_c)))
+
+------------------------------------------------------------
+5.4 Speckle-Aware Loss
+------------------------------------------------------------
+
+Implement a log-domain reconstruction constraint.
+
+L_speckle =
+mean(
+ abs(
+ log(I_hat + epsilon)
+ -
+ log(I_c + epsilon)
+ )
+)
+
+Also implement an optional residual consistency formulation:
+
+R_hat = I_n - I_hat
+
+and constrain the predicted residual to be spatially consistent with the injected synthetic noise.
+
+Make this optional.
+
+------------------------------------------------------------
+5.5 Frequency Loss
+------------------------------------------------------------
+
+Compute 2D FFT.
+
+F_hat = FFT2(I_hat)
+F_clean = FFT2(I_c)
+
+Use magnitude spectrum:
+
+L_frequency =
+mean(
+ abs(
+ log(1 + |F_hat|)
+ -
+ log(1 + |F_clean|)
+ )
+)
+
+Make this optional.
+
+------------------------------------------------------------
+5.6 Segmentation Loss
+------------------------------------------------------------
+
+Use:
+
+I_hat -> Segmentor -> Y_hat
+
+Ground truth:
+
+Y
+
+Implement:
+
+L_seg =
+DiceLoss(Y_hat,Y)
++
+lambda_bce * BCEWithLogitsLoss(Y_hat,Y)
+
+Also optionally implement boundary loss.
+
+Dice:
+
+Dice =
+(2 intersection + epsilon) /
+(prediction_sum + target_sum + epsilon)
+
+DiceLoss = 1 - Dice
+
+------------------------------------------------------------
+5.7 Total Loss
+------------------------------------------------------------
+
+Use:
+
+L_total =
+lambda_pixel * L_pixel
++
+lambda_ssim * L_ssim
++
+lambda_edge * L_edge
++
+lambda_lap * L_lap
++
+lambda_speckle * L_speckle
++
+lambda_frequency * L_frequency
++
+lambda_seg * L_seg
+
+All weights must be configurable.
+
+Default initial configuration:
+
+lambda_pixel = 1.0
+lambda_ssim = 1.0
+lambda_edge = 0.5
+lambda_lap = 0.2
+lambda_speckle = 0.5
+lambda_frequency = 0.1
+lambda_seg = 0.5
+
+Do NOT assume these are optimal.
+
+Implement a configuration-based hyperparameter search.
+
+============================================================
+6. MODEL ARCHITECTURE
+============================================================
+
+Build APD-Net.
+
+Use a residual U-Net style architecture.
+
+Input:
+1 channel
+
+Output:
+1 channel
+
+Architecture:
+
+Encoder:
+
+Level 1:
+Conv 1 -> 32
+
+Level 2:
+32 -> 64
+
+Level 3:
+64 -> 128
+
+Level 4:
+128 -> 256
+
+Bottleneck:
+256 -> 512
+
+Decoder:
+
+512 -> 256
+256 -> 128
+128 -> 64
+64 -> 32
+
+Final:
+32 -> 1
+
+Each residual block:
+
+Conv
+Normalization
+Activation
+Conv
+Normalization
+Residual connection
+
+Use configurable normalization:
+
+GroupNorm
+or
+InstanceNorm
+
+Avoid BatchNorm as the only option because ultrasound batch sizes may be small.
+
+============================================================
+7. MULTI-SCALE FEATURE MODULE
+============================================================
+
+Implement a MultiScaleFeatureBlock.
+
+Use parallel convolutions:
+
+3x3
+5x5
+dilated 3x3 with dilation=2
+
+Concatenate features.
+
+Then:
+
+1x1 convolution
+
+This should help distinguish:
+
+small speckle structures
+from
+larger anatomical structures.
+
+============================================================
+8. ANATOMICAL EDGE BRANCH
+============================================================
+
+Create an auxiliary edge branch.
+
+Input:
+
+encoder/bottleneck features
+
+Output:
+
+predicted edge map
+
+Use:
+
+L_edge_pred =
+BCE(edge_prediction, edge_ground_truth)
+
+Generate pseudo edge target from segmentation mask:
+
+edge_gt = morphological_gradient(mask)
+
+If mask is unavailable during denoising pretraining, use Sobel edges from the reference image.
+
+During task-aware training, use segmentation-derived boundaries.
+
+The edge branch must not be allowed to dominate the image reconstruction objective.
+
+============================================================
+9. ATTENTION
+============================================================
+
+Implement a lightweight attention module.
+
+Use channel attention + spatial attention.
+
+Call it:
+
+Anatomy Attention Module (AAM)
+
+Input:
+feature map
+
+Output:
+attention-refined feature map
+
+Make it possible to turn AAM ON/OFF for ablation.
+
+============================================================
+10. SEGMENTATION NETWORK
+============================================================
+
+Implement a separate U-Net segmentor.
+
+Input:
+1-channel denoised image
+
+Output:
+1-channel fetal head mask
+
+Architecture:
+
+channels:
+32,64,128,256
+
+Use:
+
+Dice + BCE
+
+Train the segmentation network in two modes.
+
+MODE A:
+Frozen pretrained segmentor
+
+MODE B:
+Jointly train denoiser + segmentor
+
+This is important for understanding whether the segmentation feedback itself causes the improvement.
+
+============================================================
+11. TRAINING STRATEGY
+============================================================
+
+Implement three training stages.
+
+------------------------------------------------------------
+STAGE 1: DENOISING PRETRAINING
+------------------------------------------------------------
+
+Use synthetic noisy-clean pairs.
+
+Input:
+I_noisy
+
+Target:
+I_clean_proxy
+
+Train APD-Net using:
+
+L_pixel
+L_ssim
+L_edge
+L_speckle
+L_frequency
+
+Do NOT use segmentation loss in Stage 1.
+
+Save:
+
+checkpoints/apd_stage1_best.pt
+
+------------------------------------------------------------
+STAGE 2: SEGMENTOR PRETRAINING
+------------------------------------------------------------
+
+Train U-Net segmentor using original HC18 images and masks.
+
+Input:
+I_original
+
+Target:
+Y
+
+Loss:
+
+Dice + BCE
+
+Save:
+
+checkpoints/segmentor_best.pt
+
+------------------------------------------------------------
+STAGE 3: JOINT TASK-AWARE TRAINING
+------------------------------------------------------------
+
+Load:
+
+APD-Net Stage 1 weights
+Segmentor Stage 2 weights
+
+Then:
+
+I_noisy
+   |
+   v
+APD-Net
+   |
+   v
+I_hat
+   |
+   v
+Segmentor
+   |
+   v
+Y_hat
+
+Backpropagate:
+
+L_total
+
+Allow configurable:
+
+freeze_segmentor = true/false
+
+freeze_denoiser = true/false
+
+joint_training = true/false
+
+Save:
+
+checkpoints/apd_joint_best.pt
+
+============================================================
+12. SYNTHETIC SPECKLE GENERATION
+============================================================
+
+Implement realistic synthetic multiplicative speckle.
+
+Support:
+
+Gaussian multiplicative noise
+
+Gamma distributed speckle
+
+Rayleigh-inspired multiplicative noise
+
+Config:
+
+speckle_model:
+    gaussian
+    gamma
+    rayleigh
+
+Noise strengths:
+
+0.05
+0.10
+0.20
+0.30
+0.40
+
+Generate multiple corrupted versions per image.
+
+Important:
+
+The test corruption must use fixed random seeds.
+
+Never generate test noise differently every evaluation.
+
+Save corruption metadata.
+
+============================================================
+13. REALISTIC AUGMENTATION
+============================================================
+
+Use only medically reasonable augmentations.
+
+Implement:
+
+horizontal flip where anatomically appropriate
+small rotation
+small translation
+scale
+mild brightness variation
+mild contrast variation
+gamma adjustment
+
+Do NOT use aggressive transformations that destroy fetal-head geometry.
+
+Segmentation masks must receive corresponding spatial transforms.
+
+============================================================
+14. HC18 DATASET LOADER
+============================================================
+
+Create:
+
+datasets/hc18_dataset.py
+
+The loader must:
+
+1. Read training images
+2. Read test images
+3. Read training masks if provided
+4. Read pixel size CSV
+5. Read HC values
+6. Associate image -> mask -> pixel size -> HC measurement
+7. Validate missing files
+8. Print dataset statistics
+9. Normalize images
+10. Resize/pad consistently
+11. Preserve original image dimensions in metadata
+
+Do not hardcode filenames.
+
+Automatically inspect directories.
+
+If multiple filename conventions exist, implement robust matching.
+
+============================================================
+15. TRAIN/VALIDATION/TEST SPLIT
+============================================================
+
+Do NOT randomly split augmented images.
+
+First split original patient/study cases if patient IDs are available.
+
+If HC18 has no patient ID:
+
+create a deterministic image-level split and clearly report this limitation.
+
+Preferred:
+
+70% training
+15% validation
+15% test
+
+BUT:
+
+If the official HC18 test set has no public masks, do not pretend it can be used for segmentation evaluation.
+
+Use:
+
+training -> train/validation
+
+official test -> inference-only unless masks are actually available.
+
+Never leak an image and its augmented version across train/val/test.
+
+============================================================
+16. HC18-SPECIFIC EVALUATION
+============================================================
+
+Evaluate fetal-head segmentation.
+
+Metrics:
+
+Dice
+IoU
+HD95
+ASSD/ASD
+Precision
+Recall
+F1
+
+Also evaluate HC measurement.
+
+From predicted fetal head contour:
+
+calculate head circumference in pixels.
+
+Use pixel spacing from:
+
+training_set_pixel_size_and_HC.csv
+
+or available pixel-size metadata.
+
+Convert pixel circumference to physical units when valid.
+
+Compare:
+
+predicted HC
+vs
+ground-truth HC
+
+Report:
+
+MAE
+RMSE
+correlation
+
+Do not invent physical units if metadata are missing.
+
+============================================================
+17. DENOISING METRICS
+============================================================
+
+For synthetic paired experiments:
+
+PSNR
+SSIM
+MAE
+MSE
+
+For real ultrasound:
+
+CNR
+SNR
+ENL
+edge preservation index
+gradient correlation
+
+Clearly separate:
+
+Synthetic paired evaluation
+
+from
+
+Real-image evaluation.
+
+Never mix them into one misleading PSNR table.
+
+============================================================
+18. BASELINE METHODS
+============================================================
+
+Implement the following baselines.
+
+------------------------------------------------------------
+BASELINE 1: No Denoising
+------------------------------------------------------------
+
+Original image -> Segmentor
+
+------------------------------------------------------------
+BASELINE 2: Median Filter
+------------------------------------------------------------
+
+Kernel:
+
+3x3
+5x5
+
+------------------------------------------------------------
+BASELINE 3: Gaussian Filter
+------------------------------------------------------------
+
+sigma:
+
+0.5
+1.0
+
+------------------------------------------------------------
+BASELINE 4: Wiener Filter
+------------------------------------------------------------
+
+Use scipy/skimage implementation where appropriate.
+
+------------------------------------------------------------
+BASELINE 5: Non-Local Means
+------------------------------------------------------------
+
+Implement configurable NLM.
+
+------------------------------------------------------------
+BASELINE 6: Anisotropic Diffusion
+------------------------------------------------------------
+
+Implement Perona-Malik or equivalent.
+
+------------------------------------------------------------
+BASELINE 7: DnCNN
+------------------------------------------------------------
+
+Implement a standard DnCNN baseline.
+
+Train it on the same synthetic corruption protocol.
+
+------------------------------------------------------------
+BASELINE 8: Plain U-Net Denoiser
+------------------------------------------------------------
+
+Same parameter budget as reasonably possible.
+
+Loss:
+
+L1 + SSIM
+
+------------------------------------------------------------
+BASELINE 9: Residual U-Net
+------------------------------------------------------------
+
+Use residual learning.
+
+------------------------------------------------------------
+BASELINE 10: GRN-INSPIRED BASELINE
+------------------------------------------------------------
+
+Implement a simplified segmentation-guided generator based on the GRN concept.
+
+Generator:
+G
+
+Segmentor:
+S
+
+Optimize:
+
+L_G =
+lambda_seg * DiceLoss(S(G(x)), y)
++
+lambda_L1 * L1(G(x),x)
+
+Optionally include PatchGAN discriminator.
+
+Call it:
+
+GRN-inspired baseline
+
+Do NOT claim it is an exact reproduction of the published GRN unless all original implementation details are verified.
+
+Document differences from the paper.
+
+------------------------------------------------------------
+BASELINE 11: APD-Net
+------------------------------------------------------------
+
+Our proposed method.
+
+============================================================
+19. FAIR COMPARISON
+============================================================
+
+All deep-learning methods must use:
+
+same train/val split
+same test split
+same image resolution
+same normalization
+same corruption generation
+same optimizer family where reasonable
+same maximum epochs
+same early stopping criteria
+same number of training samples
+same evaluation code
+
+Record:
+
+parameter count
+FLOPs if feasible
+training time
+inference time
+GPU memory
+
+============================================================
+20. ABLATION STUDY
+============================================================
+
+Implement automatically:
+
+A0:
+Plain U-Net denoiser
+
+A1:
++ SSIM
+
+A2:
++ Edge loss
+
+A3:
++ Speckle-aware loss
+
+A4:
++ Frequency loss
+
+A5:
++ Anatomy Attention Module
+
+A6:
++ Segmentation loss
+
+A7:
+Full APD-Net
+
+Also:
+
+A8:
+Full model without joint training
+
+A9:
+Full model with frozen segmentor
+
+A10:
+Full model without edge branch
+
+A11:
+Full model without attention
+
+Generate a table automatically.
+
+============================================================
+21. CROSS-DATASET EXPERIMENT
+============================================================
+
+The code must support additional ultrasound datasets through a common interface:
+
+BaseUltrasoundDataset
+
+Do NOT hardcode HC18 assumptions into the model.
+
+Create:
+
+datasets/
+    hc18_dataset.py
+    generic_ultrasound_dataset.py
+
+Then support:
+
+train on dataset A
+test on dataset A
+
+train on dataset A
+test on dataset B
+
+train on A+B
+test on C
+
+Report:
+
+PSNR
+SSIM
+CNR
+edge preservation
+segmentation metrics when masks exist
+
+This experiment is critical for testing whether the denoiser generalizes.
+
+============================================================
+22. TRAINING CONFIGURATION
+============================================================
+
+Create:
+
+configs/
+    baseline.yaml
+    apdnet.yaml
+    ablation.yaml
+    hc18.yaml
+
+Example:
+
+seed: 42
+
+image_size: 256
+
+batch_size: 8
+
+epochs: 100
+
+optimizer:
+    name: AdamW
+    lr: 0.0002
+    weight_decay: 0.00001
+
+scheduler:
+    name: CosineAnnealingLR
+
+mixed_precision: true
+
+gradient_clip: 1.0
+
+early_stopping:
+    patience: 15
+
+loss:
+    pixel: 1.0
+    ssim: 1.0
+    edge: 0.5
+    laplacian: 0.2
+    speckle: 0.5
+    frequency: 0.1
+    segmentation: 0.5
+
+============================================================
+23. REPRODUCIBILITY
+============================================================
+
+Set seeds for:
+
+Python
+NumPy
+PyTorch
+CUDA
+
+Create:
+
+utils/seed.py
+
+Save:
+
+config
+git commit if available
+random seed
+dataset split
+model architecture
+training metrics
+
+into each experiment directory.
+
+Each experiment should create:
+
+experiments/<experiment_name>/
+
+    config.yaml
+    train.log
+    metrics.csv
+    best_model.pt
+    last_model.pt
+    plots/
+    predictions/
+    summary.json
+
+============================================================
+24. CHECKPOINTING
+============================================================
+
+Save:
+
+best validation loss
+best PSNR
+best SSIM
+best Dice
+
+Do NOT select the model using test performance.
+
+Test set must be evaluated only once after model selection.
+
+============================================================
+25. EARLY STOPPING
+============================================================
+
+Support:
+
+monitor = val_total_loss
+
+or:
+
+monitor = val_dice
+
+or:
+
+monitor = val_ssim
+
+configurable.
+
+Default:
+
+validation objective combining:
+
+0.5 * normalized SSIM
++
+0.5 * normalized Dice
+
+but ensure no test leakage.
+
+============================================================
+26. VISUALIZATION
+============================================================
+
+Create automatic figures.
+
+Figure 1:
+Original / noisy / denoised / reference
+
+Figure 2:
+Residual map
+
+Figure 3:
+Edge maps
+
+Figure 4:
+Segmentation overlays
+
+Figure 5:
+PSNR vs epoch
+
+Figure 6:
+SSIM vs epoch
+
+Figure 7:
+Dice vs epoch
+
+Figure 8:
+PSNR comparison across models
+
+Figure 9:
+SSIM comparison
+
+Figure 10:
+Dice comparison
+
+Figure 11:
+HC measurement error
+
+Figure 12:
+Ablation comparison
+
+Figure 13:
+Cross-dataset generalization
+
+Figure 14:
+Failure cases
+
+Use matplotlib.
+
+Use no hard-coded colors unless necessary for readability.
+
+Save figures as:
+
+PNG 300 DPI
+PDF
+
+============================================================
+27. QUALITATIVE RESULTS
+============================================================
+
+For every model produce a grid:
+
+Original
+Synthetic noisy
+Median
+Wiener
+NLM
+DnCNN
+U-Net
+GRN-inspired
+APD-Net
+Reference
+
+Then another grid:
+
+Original
+APD-Net
+Ground truth mask
+APD-Net segmentation
+Baseline segmentation
+
+Highlight difficult examples.
+
+Automatically select:
+
+best case
+median case
+worst case
+
+based on Dice.
+
+============================================================
+28. FAILURE ANALYSIS
+============================================================
+
+Automatically identify images where APD-Net:
+
+1. reduces Dice
+2. reduces SSIM
+3. reduces PSNR
+4. causes excessive smoothing
+5. produces boundary artifacts
+
+Save these examples.
+
+Create:
+
+results/failure_cases.csv
+
+Columns:
+
+image_id
+model
+psnr
+ssim
+dice
+iou
+hd95
+notes
+
+============================================================
+29. STATISTICAL ANALYSIS
+============================================================
+
+For paired model comparisons:
+
+Use paired statistical tests where appropriate.
+
+Possible:
+
+Wilcoxon signed-rank test
+
+or
+
+paired t-test if assumptions are reasonably satisfied.
+
+Report:
+
+mean
+std
+median
+IQR
+95% CI
+p-value
+effect size where appropriate
+
+Do NOT cherry-pick only favorable images.
+
+Correct for multiple comparisons when many models are compared.
+
+Use:
+
+Holm correction
+
+for multiple pairwise comparisons.
+
+============================================================
+30. RESULT TABLES
+============================================================
+
+Automatically generate:
+
+Table 1:
+Dataset statistics
+
+Table 2:
+Denoising performance
+
+Columns:
+
+Method
+PSNR
+SSIM
+MAE
+MSE
+
+Table 3:
+Ultrasound quality
+
+Method
+SNR
+CNR
+ENL
+Edge Preservation
+
+Table 4:
+Segmentation
+
+Method
+Dice
+IoU
+HD95
+ASD
+Precision
+Recall
+
+Table 5:
+HC measurement
+
+Method
+HC MAE
+HC RMSE
+Correlation
+
+Table 6:
+Ablation
+
+Component
+PSNR
+SSIM
+Dice
+
+Table 7:
+Complexity
+
+Method
+Parameters
+FLOPs
+Inference time
+GPU memory
+
+Table 8:
+Cross-dataset
+
+Train dataset
+Test dataset
+PSNR
+SSIM
+Dice
+
+Export all tables as:
+
+CSV
+Excel
+LaTeX
+
+============================================================
+31. EXPERIMENT MANAGEMENT
+============================================================
+
+Create a single command:
+
+python run_experiment.py --config configs/apdnet.yaml
+
+Also:
+
+python train_denoiser.py --config configs/apdnet.yaml
+
+python train_segmentor.py --config configs/hc18.yaml
+
+python train_joint.py --config configs/apdnet.yaml
+
+python evaluate.py --checkpoint ...
+
+python evaluate_all.py
+
+python run_ablation.py
+
+python run_baselines.py
+
+python generate_report.py
+
+============================================================
+32. ONE COMMAND FULL PIPELINE
+============================================================
+
+Create:
+
+python run_all.py
+
+It should execute:
+
+1. Dataset validation
+2. Dataset statistics
+3. Preprocessing
+4. Synthetic corruption generation
+5. Baseline training
+6. APD-Net Stage 1
+7. Segmentor training
+8. Joint training
+9. Evaluation
+10. Ablation
+11. Statistical analysis
+12. Figures
+13. Tables
+14. Final report
+
+Allow flags:
+
+--skip-baselines
+--skip-ablation
+--skip-training
+--evaluate-only
+
+============================================================
+33. DATA VALIDATION
+============================================================
+
+Before training:
+
+Check:
+
+- corrupted images
+- missing masks
+- duplicate filenames
+- invalid dimensions
+- NaN
+- Inf
+- empty masks
+- incorrect CSV entries
+- pixel size errors
+- HC errors
+
+Print a report.
+
+Example:
+
+Dataset Validation Report
+-------------------------
+Images: XXXX
+Masks: XXXX
+Missing masks: XX
+Invalid images: XX
+Duplicates: XX
+Minimum size: ...
+Maximum size: ...
+Mean size: ...
+Mean pixel spacing: ...
+Mean HC: ...
+
+Save:
+
+results/dataset_validation.json
+
+============================================================
+34. NORMALIZATION
+============================================================
+
+Implement:
+
+min-max normalization
+
+and
+
+z-score normalization
+
+and
+
+percentile normalization.
+
+Default:
+
+1st-99th percentile clipping
+
+then:
+
+[0,1]
+
+Do not normalize masks.
+
+Store normalization settings.
+
+============================================================
+35. MIXED PRECISION
+============================================================
+
+Use:
+
+torch.amp.autocast
+
+and GradScaler where required.
+
+Allow:
+
+mixed_precision: true
+
+in config.
+
+============================================================
+36. GPU MEMORY
+============================================================
+
+Make the model efficient.
+
+Support:
+
+gradient accumulation
+
+batch size 1/2/4/8
+
+patch training if full image does not fit.
+
+Never silently reduce resolution.
+
+Log actual resolution.
+
+============================================================
+37. PATCH TRAINING
+============================================================
+
+Support:
+
+256x256 patches
+
+with overlap.
+
+For inference:
+
+use sliding-window reconstruction.
+
+Implement:
+
+patch_size
+stride
+
+and weighted blending.
+
+Do not produce stitching artifacts.
+
+============================================================
+38. INFERENCE SCRIPT
+============================================================
+
+Create:
+
+infer.py
+
+Usage:
+
+python infer.py \
+    --input image.png \
+    --checkpoint checkpoints/apd_joint_best.pt \
+    --output results/denoised.png
+
+Also support directory:
+
+python infer.py \
+    --input_dir data/test \
+    --output_dir results/denoised
+
+Save:
+
+denoised image
+residual
+optional segmentation mask
+
+============================================================
+39. MODEL EXPORT
+============================================================
+
+Support:
+
+PyTorch checkpoint
+
+TorchScript if possible
+
+ONNX if possible
+
+Do not sacrifice numerical correctness for export.
+
+============================================================
+40. CODE QUALITY
+============================================================
+
+Use:
+
+Python 3.10+
+
+PyTorch
+
+torchvision
+
+numpy
+
+scipy
+
+scikit-image
+
+pandas
+
+matplotlib
+
+opencv-python
+
+PyYAML
+
+tqdm
+
+SimpleITK only if needed
+
+statsmodels if required
+
+Do not add unnecessary dependencies.
+
+Use type hints.
+
+Use docstrings.
+
+Use modular classes.
+
+No giant 2000-line Python file.
+
+============================================================
+41. PROJECT STRUCTURE
+============================================================
+
+Create:
+
+AnatomyPreserveUS/
+
+├── README.md
+├── requirements.txt
+├── environment.yml
+├── .gitignore
+├── configs/
+│   ├── apdnet.yaml
+│   ├── baseline.yaml
+│   ├── hc18.yaml
+│   └── ablation.yaml
+│
+├── datasets/
+│   ├── __init__.py
+│   ├── hc18_dataset.py
+│   ├── generic_ultrasound_dataset.py
+│   └── transforms.py
+│
+├── models/
+│   ├── __init__.py
+│   ├── apdnet.py
+│   ├── residual_unet.py
+│   ├── dncnn.py
+│   ├── unet_denoiser.py
+│   ├── segmentor.py
+│   ├── attention.py
+│   ├── edge_branch.py
+│   └── grn_inspired.py
+│
+├── losses/
+│   ├── __init__.py
+│   ├── pixel.py
+│   ├── ssim.py
+│   ├── edge.py
+│   ├── speckle.py
+│   ├── frequency.py
+│   ├── segmentation.py
+│   └── total_loss.py
+│
+├── noise/
+│   ├── __init__.py
+│   └── speckle.py
+│
+├── training/
+│   ├── trainer.py
+│   ├── denoising_trainer.py
+│   ├── segmentation_trainer.py
+│   └── joint_trainer.py
+│
+├── evaluation/
+│   ├── image_metrics.py
+│   ├── ultrasound_metrics.py
+│   ├── segmentation_metrics.py
+│   ├── hc_metrics.py
+│   ├── statistics.py
+│   └── evaluator.py
+│
+├── baselines/
+│   ├── classical.py
+│   ├── dncnn_baseline.py
+│   ├── unet_baseline.py
+│   └── grn_baseline.py
+│
+├── visualization/
+│   ├── qualitative.py
+│   ├── curves.py
+│   ├── comparisons.py
+│   └── failure_analysis.py
+│
+├── experiments/
+│
+├── results/
+│
+├── train_denoiser.py
+├── train_segmentor.py
+├── train_joint.py
+├── evaluate.py
+├── evaluate_all.py
+├── run_baselines.py
+├── run_ablation.py
+├── run_experiment.py
+├── run_all.py
+├── infer.py
+└── generate_report.py
+
+============================================================
+42. README
+============================================================
+
+Create a detailed README with:
+
+1. Research motivation
+2. Research question
+3. Method
+4. Mathematical formulation
+5. Dataset preparation
+6. Installation
+7. Training
+8. Evaluation
+9. Baselines
+10. Ablation
+11. Cross-dataset testing
+12. Expected outputs
+13. Reproducibility
+14. Limitations
+15. Important HC18 clean-reference limitation
+
+Include commands.
+
+============================================================
+43. TESTING
+============================================================
+
+Create unit tests.
+
+Test:
+
+dataset loading
+noise generation
+SSIM
+edge loss
+speckle loss
+Dice loss
+APD-Net forward pass
+segmentor forward pass
+checkpoint loading
+metric calculation
+
+Run:
+
+pytest
+
+before declaring the project complete.
+
+============================================================
+44. SANITY CHECK
+============================================================
+
+Before full training:
+
+Run a tiny experiment:
+
+20 training images
+5 validation images
+5 test images
+
+Train for:
+
+2 epochs
+
+Confirm:
+
+loss decreases or behaves numerically correctly
+gradients exist
+checkpoint saves
+images save
+metrics calculate
+plots generate
+
+Only then allow full training.
+
+============================================================
+45. OVERFITTING TEST
+============================================================
+
+Implement a deliberate overfitting test.
+
+Use:
+
+1-4 images
+
+Train for 100-300 iterations.
+
+The model should be able to substantially overfit the tiny dataset.
+
+If it cannot:
+
+diagnose:
+
+normalization
+loss
+gradient
+data loader
+architecture
+learning rate
+
+Do not proceed until this sanity check passes.
+
+============================================================
+46. REPRODUCIBLE RANDOMNESS
+============================================================
+
+Use seed:
+
+42
+
+for primary experiments.
+
+Also support:
+
+43
+44
+45
+
+for robustness experiments.
+
+Run the final model at least 3 seeds where computationally possible.
+
+Report:
+
+mean ± std
+
+rather than only the best run.
+
+============================================================
+47. FINAL COMPARISON
+============================================================
+
+Generate one final table:
+
+==========================================================
+METHOD              PSNR   SSIM   CNR   EDGE   DICE   HD95
+==========================================================
+
+Original            ...
+Median              ...
+Wiener              ...
+NLM                 ...
+Anisotropic         ...
+DnCNN               ...
+U-Net               ...
+Residual U-Net      ...
+GRN-inspired        ...
+APD-Net             ...
+==========================================================
+
+Only fill values that were actually measured.
+
+Use:
+
+"N/A"
+
+where a metric is not scientifically applicable.
+
+Never fabricate values.
+
+============================================================
+48. RESEARCH CLAIM SAFETY
+============================================================
+
+This is extremely important.
+
+The code and report must NEVER say:
+
+"APD-Net is state-of-the-art"
+
+unless a proper literature comparison establishes it.
+
+Do not invent numerical improvements.
+
+Do not write:
+
+"PSNR improved by X%"
+
+unless actually measured.
+
+Do not call the original HC18 image "ground-truth clean".
+
+Use:
+
+"pseudo-clean reference"
+
+for synthetic corruption experiments.
+
+Use:
+
+"real ultrasound image"
+
+for the original HC18 image.
+
+Do not claim clinical effectiveness.
+
+Use:
+
+"research evaluation"
+
+or
+
+"algorithmic evaluation".
+
+============================================================
+49. FINAL AUTOMATIC REPORT
+============================================================
+
+generate_report.py must create:
+
+results/final_report.md
+
+containing:
+
+1. Dataset statistics
+2. Experimental setup
+3. Model architecture
+4. Loss formulation
+5. Baselines
+6. Denoising results
+7. Segmentation results
+8. HC measurement results
+9. Ablation results
+10. Cross-dataset results
+11. Statistical significance
+12. Failure analysis
+13. Computational complexity
+14. Limitations
+15. Reproducibility information
+
+Also generate:
+
+results/final_results.xlsx
+
+results/final_results.csv
+
+results/final_results.tex
+
+============================================================
+50. FINAL RESEARCH EXPERIMENT MATRIX
+============================================================
+
+The final implementation must support this exact experiment matrix.
+
+EXP-01:
+Original image + segmentation
+
+EXP-02:
+Synthetic speckle + classical filters
+
+EXP-03:
+Synthetic speckle + DnCNN
+
+EXP-04:
+Synthetic speckle + U-Net denoiser
+
+EXP-05:
+Synthetic speckle + Residual U-Net
+
+EXP-06:
+Synthetic speckle + GRN-inspired
+
+EXP-07:
+Synthetic speckle + APD-Net without segmentation
+
+EXP-08:
+Synthetic speckle + APD-Net with segmentation
+
+EXP-09:
+APD-Net without SSIM
+
+EXP-10:
+APD-Net without Edge
+
+EXP-11:
+APD-Net without Speckle Loss
+
+EXP-12:
+APD-Net without Frequency Loss
+
+EXP-13:
+APD-Net without Attention
+
+EXP-14:
+APD-Net with frozen segmentor
+
+EXP-15:
+APD-Net joint training
+
+EXP-16:
+Cross-dataset generalization
+
+EXP-17:
+Three random seeds
+
+============================================================
+51. KEY SCIENTIFIC COMPARISON
+============================================================
+
+The central experiment is:
+
+RAW
+    |
+    +---- Segmentor ----> Dice
+
+versus
+
+RAW
+    |
+    +---- APD-Net ----> Denoised ----> Segmentor ----> Dice
+
+Compare:
+
+Delta Dice
+Delta IoU
+Delta HD95
+Delta HC-MAE
+
+At the same time compare:
+
+PSNR
+SSIM
+CNR
+SNR
+Edge Preservation
+
+The goal is to determine whether:
+
+better denoising
+    =>
+better anatomical preservation
+    =>
+better segmentation
+
+rather than assuming that relationship.
+
+============================================================
+52. GRN COMPARISON
+============================================================
+
+The GRN paper should be treated as an important conceptual reference.
+
+Implement a simplified GRN-inspired baseline.
+
+Document:
+
+- what was reproduced
+- what was simplified
+- what differs from the paper
+
+Do not claim exact reproduction without verifying the original source code.
+
+The GRN concept is:
+
+Generator -> reconstructed image -> Segmentor
+                         ^
+                         |
+                  segmentation feedback
+
+Our proposed model should instead be:
+
+Noisy image
+     |
+     v
+APD-Net
+     |
+     +---- speckle loss
+     +---- SSIM
+     +---- edge loss
+     +---- frequency loss
+     +---- reconstruction loss
+     |
+     v
+Denoised image
+     |
+     v
+Segmentor
+     |
+     +---- segmentation loss
+     |
+     v
+joint feedback
+
+Clearly demonstrate this distinction in the README.
+
+============================================================
+53. IMPORTANT NOVELTY PROTECTION
+============================================================
+
+Before writing the final paper-style claims:
+
+Search the local literature files supplied with the project and, if internet access is available, search recent literature for:
+
+- ultrasound speckle denoising
+- anatomy-aware ultrasound denoising
+- segmentation-aware denoising
+- task-aware denoising
+- speckle-aware neural networks
+- ultrasound restoration segmentation
+- joint denoising segmentation
+- HC18 denoising
+- fetal ultrasound denoising
+
+Create:
+
+results/literature_gap.md
+
+containing:
+
+paper
+year
+dataset
+method
+loss
+denoising metrics
+segmentation metrics
+limitations
+difference from APD-Net
+
+Do NOT claim that APD-Net is novel merely because we designed it.
+
+The literature search must be used to refine the novelty claim.
+
+============================================================
+54. FINAL ACCEPTANCE CRITERIA
+============================================================
+
+The project is complete ONLY if all of these are true:
+
+[ ] Dataset loads correctly
+[ ] Dataset validation works
+[ ] Synthetic speckle generation works
+[ ] Baseline filters work
+[ ] DnCNN trains
+[ ] U-Net denoiser trains
+[ ] Segmentor trains
+[ ] APD-Net trains
+[ ] Joint training works
+[ ] Checkpoints save/load
+[ ] PSNR works
+[ ] SSIM works
+[ ] CNR works
+[ ] SNR works
+[ ] ENL works where applicable
+[ ] Dice works
+[ ] IoU works
+[ ] HD95 works
+[ ] HC measurement works where metadata permit
+[ ] Ablation works
+[ ] Statistical analysis works
+[ ] Cross-dataset framework works
+[ ] Qualitative figures generated
+[ ] Failure cases generated
+[ ] Tables generated
+[ ] Excel generated
+[ ] CSV generated
+[ ] LaTeX tables generated
+[ ] Final report generated
+[ ] Unit tests pass
+[ ] Tiny overfitting test passes
+[ ] Full pipeline executes without manual code modification
+
+============================================================
+55. FIRST ACTION
+============================================================
+
+Do NOT immediately start training.
+
+First:
+
+1. Inspect the repository.
+2. Locate all HC18 files.
+3. Inspect the ZIP contents.
+4. Inspect CSV columns.
+5. Determine image/mask filename conventions.
+6. Determine image dimensions.
+7. Determine whether masks are available for training.
+8. Determine whether patient IDs are available.
+9. Determine whether the official test masks exist.
+10. Print a dataset report.
+
+Then create the complete project structure.
+
+Then implement the dataset loader.
+
+Then run dataset validation.
+
+Then run the 20-image sanity test.
+
+Then implement the models.
+
+Then run the tiny overfitting test.
+
+Then implement full training.
+
+Then implement baselines.
+
+Then implement evaluation.
+
+Then run the complete experiment matrix.
+
+Do not skip steps.
+
+At the end, show:
+
+1. Project tree
+2. Exact commands to install dependencies
+3. Exact command to validate dataset
+4. Exact command to train APD-Net
+5. Exact command to train baselines
+6. Exact command to evaluate
+7. Exact command to run ablation
+8. Exact command to generate final report
+9. Location of checkpoints
+10. Location of CSV/Excel/LaTeX results
+11. A concise summary of all experiments completed
+12. Any experiments that could not be completed and the exact reason
+
+If an implementation detail is uncertain, inspect the actual dataset/code/source rather than inventing an assumption.
+```
+
+---
+
+## Recommended execution order
+
+Don't ask Copilot to immediately run the entire pipeline on all data. Use this sequence:
+
+### Phase 1 — Dataset
+
+```bash
+python run_experiment.py --config configs/hc18.yaml --validate-only
+```
+
+Check:
+
+* image count
+* mask count
+* CSV mapping
+* image sizes
+* pixel spacing
+* HC values
+* train/validation split
+
+### Phase 2 — Tiny test
+
+```bash
+python run_experiment.py \
+    --config configs/apdnet.yaml \
+    --debug \
+    --max-images 20 \
+    --epochs 2
+```
+
+### Phase 3 — Overfit test
+
+```bash
+python train_denoiser.py \
+    --config configs/apdnet.yaml \
+    --overfit-test
+```
+
+This is **very important**. If the network cannot overfit 1–4 images, don't proceed to the full experiment.
+
+### Phase 4 — Baselines
+
+```bash
+python run_baselines.py \
+    --config configs/baseline.yaml
+```
+
+### Phase 5 — Proposed model
+
+```bash
+python train_denoiser.py \
+    --config configs/apdnet.yaml
+```
+
+### Phase 6 — Segmentor
+
+```bash
+python train_segmentor.py \
+    --config configs/hc18.yaml
+```
+
+### Phase 7 — Joint model
+
+```bash
+python train_joint.py \
+    --config configs/apdnet.yaml
+```
+
+### Phase 8 — Evaluation
+
+```bash
+python evaluate_all.py
+```
+
+### Phase 9 — Ablation
+
+```bash
+python run_ablation.py
+```
+
+### Phase 10 — Final report
+
+```bash
+python generate_report.py
+```
+
+---
+
+# What your final experimental comparison should look like
+
+The most important table in your eventual paper should be something like:
+
+| Method         |       PSNR ↑ |       SSIM ↑ |        CNR ↑ | Edge Preservation ↑ |       Dice ↑ |       HD95 ↓ |
+| -------------- | -----------: | -----------: | -----------: | ------------------: | -----------: | -----------: |
+| Raw US         |            — |            — |            — |                   — |     measured |     measured |
+| Median         |     measured |     measured |     measured |            measured |     measured |     measured |
+| Wiener         |     measured |     measured |     measured |            measured |     measured |     measured |
+| NLM            |     measured |     measured |     measured |            measured |     measured |     measured |
+| Anisotropic    |     measured |     measured |     measured |            measured |     measured |     measured |
+| DnCNN          |     measured |     measured |     measured |            measured |     measured |     measured |
+| U-Net          |     measured |     measured |     measured |            measured |     measured |     measured |
+| Residual U-Net |     measured |     measured |     measured |            measured |     measured |     measured |
+| GRN-inspired   |     measured |     measured |     measured |            measured |     measured |     measured |
+| **APD-Net**    | **measured** | **measured** | **measured** |        **measured** | **measured** | **measured** |
+
+The key is that **APD-Net should not be judged only by PSNR/SSIM**.
+
+Your actual research claim should eventually be based on the relationship:
+
+$$
+\boxed{
+\text{Speckle Suppression}
+\rightarrow
+\text{Anatomical Preservation}
+\rightarrow
+\text{Better Segmentation}
+}
+$$
+
+rather than simply:
+
+$$
+\text{Higher PSNR} \Rightarrow \text{better model}
+$$
+
+That distinction is important because the GRN paper itself demonstrates that an image can become more useful for segmentation without necessarily looking visibly cleaner; its authors describe SGE as making subtle local intensity/texture changes optimized for segmentation loss. 
+
+Also, **UltraGS and MedGS should not be treated as direct denoising baselines** merely because they report PSNR/SSIM on ultrasound/medical reconstruction. UltraGS is primarily a novel-view-synthesis framework, while MedGS focuses on reconstruction/interpolation and anatomical geometry. Their metrics can inform your literature review, but they are not apples-to-apples denoising baselines.  
+
+### The research architecture you're ultimately building
+
+```text
+                         HC18 / US DATA
+                              │
+                              ▼
+                    ┌───────────────────┐
+                    │ Synthetic Speckle │
+                    │ Generation        │
+                    └─────────┬─────────┘
+                              │
+                              ▼
+                       Noisy Ultrasound
+                              │
+                              ▼
+                 ┌────────────────────────┐
+                 │       APD-Net          │
+                 │                        │
+                 │ Multi-scale Encoder    │
+                 │ Residual Blocks        │
+                 │ Anatomy Attention      │
+                 │ Edge Branch             │
+                 │ Decoder                 │
+                 └───────────┬────────────┘
+                             │
+                             ▼
+                      Denoised Ultrasound
+                         │          │
+             ┌───────────┘          └────────────┐
+             ▼                                    ▼
+      Image Quality                         Segmentor
+      ─────────────                         ─────────
+      PSNR                                  Dice
+      SSIM                                  IoU
+      MAE                                   HD95
+      CNR                                   ASD
+      SNR                                   HC-MAE
+      ENL
+      Edge preservation
+             │                                    │
+             └──────────────┬─────────────────────┘
+                            ▼
+                    Multi-objective Loss
+                            │
+                            ▼
+                     Joint Optimization
+                            │
+                            ▼
+                   Cross-Dataset Testing
+                            │
+                            ▼
+                 Statistical + Ablation Study
+```
+
+This gives you a **complete research implementation rather than just a model**, and it is structured so that your HC18 experiments can eventually become the experimental section of the paper.

@@ -1,0 +1,40 @@
+seed: 20261004
+image_size: 256
+batch_size: 8
+checkpoint: checkpoints/diagnostics/best_apd_reconstruction_fair.pt
+noise:
+  model: multiplicative_gaussian
+  sigma: 0.20
+  seed: 20261004
+datasets:
+  Benign_separate:
+    root: ../Datasets/Benign
+    type: numbered_bmp
+    image_pattern: "* Benign Image.bmp"
+    case_regex: "^(\\d+) Benign Image\\.bmp$"
+    mask_pattern: "* Benign Mask.tif"
+  Malignant_separate:
+    root: ../Datasets/Malignant
+    type: numbered_bmp
+    image_pattern: "* Malignant Image.bmp"
+    case_regex: "^(\\d+) Malignant Image\\.bmp$"
+    mask_pattern: "* Malignant Mask.tif"
+  BUSI_benign:
+    root: ../Datasets/Dataset_BUSI_with_GT/benign
+    type: busi
+    class_name: benign
+  BUSI_malignant:
+    root: ../Datasets/Dataset_BUSI_with_GT/malignant
+    type: busi
+    class_name: malignant
+  BUSI_normal:
+    root: ../Datasets/Dataset_BUSI_with_GT/normal
+    type: busi
+    class_name: normal
+  BrEaST:
+    root: ../Datasets/BrEaST-Lesions_USG-images_and_masks
+    type: breast_case_png
+    image_pattern: "case*.png"
+    case_regex: "^(case\\d+)\\.png$"
+output_dir: results/external_datasets
+visual_examples_per_dataset: 3

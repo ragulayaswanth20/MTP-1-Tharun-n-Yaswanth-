@@ -1,0 +1,419 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
+
+\title{Comparison of UltraGS, MedGS, and GRN for Ultrasound Imaging}
+\author{Denoising Study}
+\date{September 2026}
+
+\newcommand{\path}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\model}[1]{\textbf{#1}}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Overview}
+
+UltraGS, MedGS, and GRN address related but different ultrasound-imaging problems. UltraGS and MedGS are primarily three-dimensional Gaussian Splatting systems, while GRN is a two-dimensional image-to-image and segmentation model.
+
+\begin{table}[h]
+\centering
+\caption{High-level comparison.}
+\begin{tabular}{p{0.16\textwidth} p{0.25\textwidth} p{0.13\textwidth} p{0.25\textwidth}}
+\toprule
+Model & Main problem & Dimensionality & Main output \\
+\midrule
+UltraGS & 3D ultrasound reconstruction and novel-view synthesis & 3D sequence & Rendered views, geometry, depth, normals \\
+MedGS & 3D medical reconstruction, interpolation, and optional segmentation & 3D sequence & Reconstructed/interpolated images and optional masks \\
+GRN & 2D ultrasound denoising and segmentation & 2D image & Denoised image and segmentation mask \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{UltraGS}
+
+\subsection{What problem does it solve?}
+UltraGS learns a three-dimensional representation of an ultrasound scan. It is intended to reconstruct input views, synthesize novel views, and represent ultrasound intensity and geometry in 3D. It is not primarily a 2D denoising or segmentation model.
+
+\subsection{Architecture}
+UltraGS uses:
+\begin{itemize}
+    \item 3D Gaussian primitives;
+    \item learnable Gaussian position, scale, rotation, opacity, and appearance;
+    \item spherical-harmonic appearance representation;
+    \item ultrasound-specific, physically inspired rendering; and
+    \item a differentiable Gaussian rasterizer.
+\end{itemize}
+
+\subsection{Loss}
+The implemented image-training loss is
+\begin{equation}
+    \mathcal{L}_{\mathrm{UltraGS}}
+    = (1-\lambda_{\mathrm{DSSIM}})\mathcal{L}_{1}
+    + \lambda_{\mathrm{DSSIM}}(1-\mathrm{SSIM}),
+\end{equation}
+where $\lambda_{\mathrm{DSSIM}}=0.2$. The L1 term measures pixel reconstruction error and the SSIM term measures structural similarity. Optional normal and distortion losses are present in the code but are commented out in the main training path.
+
+\subsection{Training}
+A typical command is:
+\begin{verbatim}
+python train.py -s /path/to/processed/ultrasound/case -m /path/to/output
+\end{verbatim}
+Training requires a GPU, camera poses, ordered frames, and many optimization iterations. Densification can substantially increase GPU memory usage.
+
+\subsection{Input format}
+An UltraGS dataset should contain:
+\begin{verbatim}
+case/
+├── images/
+│   ├── 00000.png
+│   ├── 00001.png
+│   └── ...
+├── transforms_train.json
+└── points3d.ply
+\end{verbatim}
+The point cloud is optional because random points can be generated. The transforms file contains the camera angle, image paths, and camera-to-world matrices.
+
+\subsection{Output}
+UltraGS can produce reconstructed ultrasound images, novel-view images, depth maps, surface normals, edges, curvature, and a learned 3D Gaussian scene.
+
+\subsection{Limitations}
+\begin{itemize}
+    \item Requires camera poses or estimated poses.
+    \item Assumes that images belong to an ordered scan sequence.
+    \item Can require substantial GPU memory during densification.
+    \item Is sensitive to inaccurate camera poses.
+    \item Is not naturally suitable for independent 2D images.
+    \item Does not directly produce segmentation masks in the image-training path.
+    \item Reconstruction quality is not equivalent to denoising quality.
+\end{itemize}
+
+\section{MedGS}
+
+\subsection{What problem does it solve?}
+MedGS is designed for 3D medical-image reconstruction and interpolation. It reconstructs sparse medical-image sequences, generates intermediate views or frames, and can optionally perform segmentation using a shared geometric representation.
+
+MedGS supports three pipelines:
+\begin{itemize}
+    \item \texttt{img}: image reconstruction;
+    \item \texttt{seg}: binary segmentation; and
+    \item \texttt{joint}: image reconstruction and segmentation.
+\end{itemize}
+
+\subsection{Architecture}
+MedGS uses folded Gaussian primitives, a 3D Gaussian scene representation, an image-rendering head, an optional segmentation head, frame interpolation, and geometric regularization. In joint mode, image reconstruction and segmentation use shared Gaussian geometry with different output heads.
+
+\subsection{Loss}
+The image reconstruction loss contains image L1 loss, interpolation L1 loss, SSIM loss, and Gaussian-scale regularization. In the implementation it is approximately
+\begin{equation}
+    \mathcal{L}_{\mathrm{image}}
+    = 2\mathcal{L}_{1}
+    + 0.5\mathcal{L}_{\mathrm{interpolation}}
+    + 0.25\mathcal{L}_{\mathrm{scale}}
+    + 0.25(1-\mathrm{SSIM}).
+\end{equation}
+
+Joint training uses
+\begin{equation}
+    \mathcal{L}_{\mathrm{joint}}
+    = \lambda_{\mathrm{img}}\mathcal{L}_{\mathrm{image}}
+    + \lambda_{\mathrm{seg}}\mathcal{L}_{\mathrm{segmentation}}.
+\end{equation}
+The current implementation uses an L1-style loss for the rendered binary segmentation target.
+
+\subsection{Training}
+Image reconstruction:
+\begin{verbatim}
+python train.py -s /path/to/image_dataset -m /path/to/output --pipeline img
+\end{verbatim}
+
+Segmentation:
+\begin{verbatim}
+python train.py -s /path/to/segmentation_dataset \\
+    -m /path/to/output --pipeline seg
+\end{verbatim}
+
+Joint training:
+\begin{verbatim}
+python train.py -s /path/to/image_dataset -m /path/to/output \\
+    --pipeline joint --seg_source_path /path/to/mask_dataset
+\end{verbatim}
+
+\subsection{Input format}
+A MedGS sequence dataset should contain:
+\begin{verbatim}
+image_dataset/
+├── original/
+│   ├── 0000.png
+│   ├── 0001.png
+│   └── ...
+└── mirror/
+\end{verbatim}
+
+For joint training, a separate mask dataset should have the same number of frames and matching ordering:
+\begin{verbatim}
+mask_dataset/
+├── original/
+│   ├── 0000.png
+│   ├── 0001.png
+│   └── ...
+└── mirror/
+\end{verbatim}
+
+The images and masks must represent the same sequence and camera positions.
+
+\subsection{Output}
+MedGS can generate reconstructed images, interpolated frames, rendered segmentation masks, 3D Gaussian geometry, and meshes or surfaces.
+
+\subsection{Limitations}
+\begin{itemize}
+    \item Requires ordered frame sequences and camera or scan geometry.
+    \item Is not designed for unrelated independent 2D images.
+    \item The provided segmentation implementation is mainly binary.
+    \item Is sensitive to frame ordering and pose accuracy.
+    \item Joint image and segmentation training can be difficult to stabilize.
+    \item A clean-input reconstruction score cannot be compared with a noisy-input denoising score.
+\end{itemize}
+
+\section{GRN}
+
+\subsection{What problem does it solve?}
+GRN is designed for 2D ultrasound image transformation and segmentation. In the denoising experiment it receives a noisy image and produces a cleaner image. It can also predict an anatomical segmentation mask.
+
+\subsection{Architecture}
+GRN contains three networks:
+\begin{itemize}
+    \item a U-Net-like generator $G$ that produces a denoised image;
+    \item a segmentation network $S$ that predicts an anatomical mask; and
+    \item a PatchGAN discriminator $D$ that provides adversarial feedback.
+\end{itemize}
+
+The processing flow is:
+\begin{verbatim}
+Noisy image -> Generator G -> Denoised image -> Segmenter S -> Mask
+                         \\
+                          -> Discriminator D -> Real/fake feedback
+\end{verbatim}
+
+\subsection{Loss}
+The generator uses adversarial, pixel, and segmentation losses:
+\begin{equation}
+    \mathcal{L}_{G}
+    = \lambda_{\mathrm{adv}}\mathcal{L}_{\mathrm{adv}}
+    + \lambda_{\mathrm{pixel}}\mathcal{L}_{1}
+    + \lambda_{\mathrm{seg}}\mathcal{L}_{\mathrm{seg}}.
+\end{equation}
+
+The discriminator uses mean-squared adversarial loss:
+\begin{equation}
+    \mathcal{L}_{D}
+    = \frac{1}{2}\left[
+    \mathcal{L}_{\mathrm{GAN}}(D(x),1)
+    + \mathcal{L}_{\mathrm{GAN}}(D(G(x)),0)
+    \right].
+\end{equation}
+
+The implementation uses MSE for adversarial loss, L1 for image reconstruction, and Dice or cross-entropy-style segmentation loss depending on the training runner. The semi-supervised implementation also uses consistency loss for unlabeled images.
+
+\subsection{Training}
+The configurable package can be trained with:
+\begin{verbatim}
+python scripts/train.py --config configs/train_0.05.yaml
+\end{verbatim}
+
+For the HC-18 denoising benchmark:
+\begin{verbatim}
+python scripts/run_hc18_2d_benchmark.py \\
+    --epochs 20 --batch-size 8
+\end{verbatim}
+
+\subsection{Input format}
+GRN accepts independent 2D images with optional paired masks:
+\begin{verbatim}
+grn_dataset/
+├── images/
+│   ├── 001.png
+│   ├── 002.png
+│   └── ...
+└── masks/
+    ├── 001.png
+    ├── 002.png
+    └── ...
+\end{verbatim}
+
+For semi-supervised training:
+\begin{verbatim}
+dataset/
+├── labeled_images/
+├── labeled_masks/
+└── unlabeled_images/
+\end{verbatim}
+
+Images can be PNG, JPG, JPEG, and, with the relevant loader installed, NIfTI files. The model commonly resizes images to $256\times256$ during training.
+
+\subsection{Output}
+GRN produces a denoised or transformed 2D image and a segmentation mask. It can also produce overlays and API responses. Segmentation evaluation may include Dice, IoU, ASD, and HD95.
+
+\subsection{Limitations}
+\begin{itemize}
+    \item Processes each 2D image independently unless modified to use neighboring slices.
+    \item Does not explicitly model 3D geometry.
+    \item GAN training can be unstable.
+    \item Can oversmooth images and reduce useful intensity variation.
+    \item Requires careful balancing of adversarial, pixel, and segmentation losses.
+    \item Results depend on the train/validation split and noise model.
+    \item Synthetic noise may not represent clinical speckle noise.
+\end{itemize}
+
+\section{Input and Output Comparison}
+
+\begin{longtable}{p{0.14\textwidth} p{0.21\textwidth} p{0.22\textwidth} p{0.22\textwidth}}
+\caption{Input and output requirements.}\label{tab:io}\\
+\toprule
+Model & Input images & Additional input & Output \\
+\midrule
+\endfirsthead
+\toprule
+Model & Input images & Additional input & Output \\
+\midrule
+\endhead
+UltraGS & Ordered grayscale ultrasound frames & Camera poses, transforms, optional point cloud & 3D Gaussian scene, rendered views, depth, normals \\
+MedGS image & Ordered grayscale frames & Camera or sequence structure & Reconstructed/interpolated images and geometry \\
+MedGS segmentation & Ordered frames & Binary masks and sequence geometry & Rendered segmentation \\
+MedGS joint & Image and mask sequences & Matching ordering and poses & Image reconstruction plus segmentation \\
+GRN & Independent 2D grayscale images & Optional paired masks & Denoised image and segmentation mask \\
+\bottomrule
+\end{longtable}
+
+\section{Dataset Requirements}
+
+\subsection{UltraGS Dataset}
+UltraGS requires a continuous ultrasound scan or sweep represented by ordered frames. The images should be associated with a meaningful probe trajectory or camera pose estimate. HC-18 is not naturally suitable because its images are independent fetal-head views and do not provide a real scan trajectory.
+
+\subsection{MedGS Dataset}
+MedGS requires an ordered medical-image sequence. For joint segmentation, image and mask sequences must have the same number of frames, matching indices, and a common camera or sequence interpretation. HC-18 can technically be renamed into this format, but synthetic camera poses would not represent real 3D motion.
+
+\subsection{GRN Dataset}
+GRN is naturally suitable for HC-18 because HC-18 provides independent 2D fetal ultrasound images and matching annotation masks. It does not require camera poses or 3D reconstruction metadata.
+
+\section{Common Limitations}
+
+\begin{table}[h]
+\centering
+\caption{Limitations shared by the three approaches.}
+\begin{tabular}{p{0.28\textwidth} p{0.58\textwidth}}
+\toprule
+Issue & Effect \\
+\midrule
+Synthetic noise & May not match real clinical ultrasound noise. \\
+Limited patient diversity & Results may not generalize to other scanners, patients, or anatomy. \\
+Different input assumptions & Direct numerical comparison between 2D and 3D models may be unfair. \\
+Different objectives & Reconstruction quality is not identical to denoising quality. \\
+Annotation dependence & Segmentation metrics depend on mask quality. \\
+Resolution changes & Resizing can affect PSNR, SSIM, edge metrics, and masks. \\
+Hyperparameter sensitivity & Filter settings, loss weights, iterations, and densification affect results. \\
+GPU requirements & Gaussian Splatting models are substantially more expensive. \\
+Evaluation leakage & Training and evaluation images must be separated. \\
+ROI sensitivity & ENL and CNR can change substantially with ROI selection. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Research Relevance to the Proposed Study}
+
+The three models are useful as complementary sources of ideas rather than as identical competing methods. Each model contributes a different component to a future ultrasound denoising and segmentation system.
+
+\begin{table}[h]
+\centering
+\caption{How each model informs the proposed research.}
+\begin{tabular}{p{0.18\textwidth} p{0.30\textwidth} p{0.40\textwidth}}
+\toprule
+Model & Study objective & Relevant idea to study \\
+\midrule
+UltraGS & Study denoising and ultrasound image processing & Ultrasound-aware rendering, explicit scene representation, view-consistent image formation, and the use of structural or geometric information during image reconstruction. \\
+MedGS & Study preservation of anatomical structure & Shared geometric representation, image reconstruction with interpolation, and optional segmentation supervision that can encourage anatomical consistency. \\
+GRN & Study coupled image enhancement and segmentation & A generator that enhances the image while a segmentation network predicts anatomy, with adversarial, pixel, segmentation, and consistency losses trained jointly. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{UltraGS: Denoising and Ultrasound Image Processing}
+UltraGS is relevant to the first objective because it models ultrasound images using an explicit Gaussian scene and an ultrasound-oriented rendering process. Its reconstruction loss combines pixel fidelity and structural similarity. These ideas can be studied for denoising by asking whether ultrasound-aware rendering, geometric consistency, or neighboring-view information can suppress noise while retaining diagnostically important structures. In the current implementation, UltraGS is a reconstruction model rather than a dedicated denoising network, so this is a research direction rather than an existing claim of direct 2D denoising.
+
+\subsection{MedGS: Preservation of Anatomical Structure}
+MedGS is relevant to the second objective because it couples image reconstruction with a shared geometric representation. Its interpolation and geometry-related terms encourage information to remain consistent across nearby views or frames. The joint image and segmentation pipeline provides an additional anatomical signal. The main idea to study is whether reconstruction quality and segmentation supervision can preserve boundaries and anatomy better than pixel-only enhancement. This requires an ordered sequence and meaningful camera or scan geometry.
+
+\subsection{GRN: Coupled Enhancement and Segmentation}
+GRN is directly relevant to the third objective. Its generator produces an enhanced or denoised image, while the segmentation network predicts an anatomical mask. The generator is trained using a combination of adversarial, pixel, and segmentation objectives. This creates a direct connection between image quality and anatomical task performance. The key idea to study is whether segmentation supervision can guide enhancement toward clinically useful structures instead of optimizing only global pixel similarity. Because GRN processes independent 2D images, it is also suitable for datasets such as HC-18.
+
+\subsection{Proposed Combined Direction}
+Together, the models suggest a three-part research direction:
+\begin{enumerate}
+    \item Use ultrasound-aware image formation and spatial consistency inspired by UltraGS.
+    \item Use shared image--geometry--segmentation information inspired by MedGS to preserve anatomy.
+    \item Use GRN-style joint enhancement and segmentation losses for task-aware 2D or 2.5D denoising.
+\end{enumerate}
+
+A future model could therefore optimize image quality and anatomical usefulness simultaneously:
+\begin{equation}
+    \mathcal{L}_{\mathrm{total}}
+    = \lambda_{\mathrm{img}}\mathcal{L}_{\mathrm{image}}
+    + \lambda_{\mathrm{seg}}\mathcal{L}_{\mathrm{segmentation}}
+    + \lambda_{\mathrm{struct}}\mathcal{L}_{\mathrm{structure}}
+    + \lambda_{\mathrm{cons}}\mathcal{L}_{\mathrm{consistency}}.
+\end{equation}
+Here, $\mathcal{L}_{\mathrm{image}}$ measures denoising fidelity, $\mathcal{L}_{\mathrm{segmentation}}$ preserves the target anatomy, $\mathcal{L}_{\mathrm{structure}}$ represents ultrasound or geometric consistency, and $\mathcal{L}_{\mathrm{consistency}}$ encourages stable results across neighboring views or augmentations. The exact loss design would need to be validated experimentally.
+
+\section{Research Gap}
+
+The three systems solve related but different problems:
+\begin{verbatim}
+UltraGS -> 3D ultrasound reconstruction and novel-view synthesis
+MedGS   -> 3D medical reconstruction, interpolation, and segmentation
+GRN     -> 2D image denoising and segmentation
+\end{verbatim}
+
+The main research gap is the absence of a method that combines 2D denoising and segmentation with 3D ultrasound geometry. Existing 2D models can process independent images but do not use temporal or 3D context. Existing Gaussian Splatting models represent 3D ultrasound scenes but are not primarily designed for fair 2D denoising on independent clinical datasets such as HC-18.
+
+A possible future model could accept:
+\begin{verbatim}
+Noisy ultrasound sequence
++ camera or probe trajectory
++ optional segmentation masks
+\end{verbatim}
+
+and produce:
+\begin{verbatim}
+Denoised 3D ultrasound scene
++ novel views
++ temporally consistent segmentation
++ anatomical measurements
+\end{verbatim}
+
+For the current datasets, the fairest comparisons are:
+\begin{itemize}
+    \item CETUS sequence: GRN, MedGS, UltraGS, classical filters, and 3D NLM;
+    \item HC-18 independent 2D images: GRN and classical 2D filters; and
+    \item HC-18 converted into a 3D format: technically possible, but not scientifically fair without real camera poses.
+\end{itemize}
+
+\section{Workspace References}
+The descriptions in this document are based on the implementations and documentation in:
+\begin{itemize}
+    \item \path{UltraGS/README.md} and \path{UltraGS/train.py};
+    \item \path{MedGS/README.md} and \path{MedGS/train.py};
+    \item \path{GRN/README.md}, \path{GRN/src/grn/training/trainer.py}, and \path{GRN/scripts/run_grn_denoising.py}.
+\end{itemize}
+
+\end{document}

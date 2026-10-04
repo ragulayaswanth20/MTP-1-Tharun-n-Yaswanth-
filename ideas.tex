@@ -1,0 +1,282 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
+
+\title{Research Ideas for Ultrasound Speckle Denoising and Anatomical Preservation}
+\author{Denoising Study}
+\date{September 2026}
+
+\newcommand{\path}[1]{\texttt{\detokenize{#1}}}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Motivation}
+
+UltraGS, MedGS, and GRN provide complementary ideas for ultrasound image processing. UltraGS contributes ultrasound-aware 3D reconstruction, MedGS contributes shared geometry and anatomical consistency, and GRN contributes learned image enhancement coupled with segmentation. The following ideas use these contributions to define possible research directions.
+
+\section{Anatomy-Guided Speckle Denoising}
+
+Combine GRN-style denoising with segmentation supervision. The model receives a noisy ultrasound image and produces both a denoised image and an anatomical mask.
+
+\begin{equation}
+    \mathcal{L}
+    = \lambda_{\mathrm{pixel}}\mathcal{L}_{\mathrm{pixel}}
+    + \lambda_{\mathrm{seg}}\mathcal{L}_{\mathrm{seg}}
+    + \lambda_{\mathrm{edge}}\mathcal{L}_{\mathrm{edge}}
+    + \lambda_{\mathrm{adv}}\mathcal{L}_{\mathrm{adv}}.
+\end{equation}
+
+The segmentation branch guides the generator to preserve fetal-head boundaries instead of only flattening intensity variation. The main hypothesis is that denoising optimized for anatomical usefulness will be more clinically meaningful than denoising optimized only for PSNR.
+
+\section{Uncertainty-Aware Denoising}
+
+Add an uncertainty head to GRN. The model produces:
+\begin{itemize}
+    \item a denoised image;
+    \item an anatomical segmentation mask; and
+    \item a pixel-wise uncertainty map.
+\end{itemize}
+
+The uncertainty map can identify weak boundaries, severe speckle, shadowing, or regions where enhancement may be unreliable. This is important for clinical use because the system can communicate where its output should not be trusted.
+
+\section{2.5D GRN with Neighboring Frames}
+
+GRN currently processes images independently. A 2.5D model can use adjacent frames without requiring a complete 3D Gaussian scene:
+
+\begin{verbatim}
+Frame t-1 + Frame t + Frame t+1
+              |
+              v
+        2.5D Generator
+          /         \\
+         v           v
+ Denoised frame t  Segmentation mask
+\end{verbatim}
+
+A temporal consistency term can be added:
+\begin{equation}
+    \mathcal{L}_{\mathrm{temporal}}
+    = \left\|G(I_t)-W\left(G(I_{t-1})\right)\right\|_1,
+\end{equation}
+where $W$ is an estimated motion warp. This approach uses sequence information while remaining less expensive than full 3D Gaussian Splatting.
+
+\section{Clean/Noisy Supervision for Gaussian Splatting}
+
+Modify MedGS or UltraGS so that noisy frames are used as inputs while clean frames are used as targets:
+
+\begin{verbatim}
+Noisy posed sequence -> Gaussian model -> Clean posed reconstruction
+\end{verbatim}
+
+A possible loss is:
+\begin{equation}
+    \mathcal{L}
+    = \lambda_{\mathrm{image}}\mathcal{L}_{\mathrm{clean\ reconstruction}}
+    + \lambda_{\mathrm{SSIM}}\mathcal{L}_{\mathrm{SSIM}}
+    + \lambda_{\mathrm{seg}}\mathcal{L}_{\mathrm{segmentation}}
+    + \lambda_{\mathrm{geometry}}\mathcal{L}_{\mathrm{geometry}}.
+\end{equation}
+
+This changes Gaussian Splatting from reconstruction of noisy observations into explicitly supervised 3D denoising. It requires aligned clean and noisy sequences with the same poses.
+
+\section{Joint Gaussian Scene and Segmentation Denoising}
+
+Extend MedGS joint training so that the segmentation head guides the image head:
+
+\begin{verbatim}
+Noisy image sequence
+          |
+          v
+   Shared Gaussian scene
+       /              \\
+      v                v
+ Image head       Segmentation head
+      |                |
+ Clean view       Anatomical mask
+\end{verbatim}
+
+The objective can be written as:
+\begin{equation}
+    \mathcal{L}_{\mathrm{total}}
+    = \lambda_{\mathrm{img}}\mathcal{L}_{\mathrm{clean\ image}}
+    + \lambda_{\mathrm{seg}}\mathcal{L}_{\mathrm{mask}}
+    + \lambda_{\mathrm{interp}}\mathcal{L}_{\mathrm{interpolation}}
+    + \lambda_{\mathrm{cons}}\mathcal{L}_{\mathrm{view\ consistency}}.
+\end{equation}
+
+Here, anatomical segmentation acts as a geometric regularizer for 3D denoising.
+
+\section{Adaptive Speckle-Aware Gaussian Representation}
+
+Use different Gaussian behavior in different image regions:
+\begin{itemize}
+    \item smaller Gaussians near anatomical boundaries;
+    \item larger Gaussians in homogeneous tissue; and
+    \item separate noise-aware opacity or scale control.
+\end{itemize}
+
+A boundary-aware scale regularizer could be:
+\begin{equation}
+    \mathcal{L}_{\mathrm{scale}}
+    = \sum_i w_i\left\|s_i-s_i^*\right\|^2,
+\end{equation}
+where $w_i$ is larger near anatomical boundaries. The goal is to smooth homogeneous regions strongly while preserving fetal-head boundaries.
+
+\section{Self-Supervised Clinical Speckle Training}
+
+Synthetic noise may not represent clinical noise. If multiple noisy acquisitions of the same anatomy are available, train with two independently corrupted images:
+\begin{equation}
+    G(I_{\mathrm{noise},1}) \longrightarrow I_{\mathrm{noise},2}.
+\end{equation}
+
+With independent noise realizations, the expected target approaches the underlying clean signal. This Noise2Noise-style approach reduces dependence on synthetic noise and clean reference images.
+
+\section{Physics-Informed Ultrasound Denoising}
+
+Replace the simple multiplicative noise assumption
+\begin{equation}
+    I_{\mathrm{noisy}}=I(1+n)
+\end{equation}
+with a more realistic model containing:
+\begin{itemize}
+    \item multiplicative speckle;
+    \item attenuation that changes with depth;
+    \item probe-dependent artifacts;
+    \item shadowing; and
+    \item reverberation.
+\end{itemize}
+
+The generator could also receive a depth or attenuation map. This would be more clinically realistic than generic noise augmentation.
+
+\section{Task-Based Denoising Evaluation}
+
+Evaluate denoising according to downstream anatomical performance rather than only image similarity. The evaluation should include:
+\begin{enumerate}
+    \item segmentation on noisy images;
+    \item segmentation after denoising;
+    \item anatomical-boundary accuracy; and
+    \item head-circumference measurement error.
+\end{enumerate}
+
+Useful metrics include Dice, IoU, HD95, boundary error, and head-circumference error. A denoising method should be considered successful if it improves the clinical task, even when its PSNR improvement is modest.
+
+\section{Multi-Objective Benchmark for 2D and 3D Models}
+
+Separate the evaluation into fair tracks:
+
+\begin{table}[h]
+\centering
+\caption{Proposed evaluation tracks.}
+\begin{tabular}{p{0.22\textwidth} p{0.32\textwidth} p{0.31\textwidth}}
+\toprule
+Track & Models & Main evaluation \\
+\midrule
+2D denoising & GRN and classical filters & PSNR, SSIM, RMSE, ENL, CNR, EPI \\
+2D anatomy & GRN and 2D segmentation baselines & Dice, IoU, HD95, boundary error \\
+3D reconstruction & MedGS and UltraGS & PSNR, SSIM, geometry, novel-view quality \\
+3D task quality & MedGS or UltraGS with masks & View consistency and segmentation \\
+Clinical utility & Applicable models & Boundary and measurement error \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This avoids unfairly comparing a 2D denoiser with a 3D reconstruction system using only pixel metrics.
+
+\section{Recommended Research Direction}
+
+The strongest direction for the current workspace is anatomy-preserving 2.5D speckle denoising. It combines:
+\begin{itemize}
+    \item GRN image enhancement and segmentation;
+    \item MedGS anatomical and geometric consistency;
+    \item UltraGS ultrasound-aware processing ideas;
+    \item neighboring-frame information; and
+    \item task-based evaluation.
+\end{itemize}
+
+\subsection{Proposed Model}
+
+\begin{verbatim}
+Three noisy ultrasound frames
+          |
+          v
+       2.5D encoder
+          |
+    Shared features
+       /          \\
+      v            v
+ Denoising head  Segmentation head
+      |            |
+ Clean frame     Mask
+\end{verbatim}
+
+\subsection{Proposed Loss}
+
+\begin{equation}
+    \mathcal{L}_{\mathrm{total}}
+    = \lambda_{\mathrm{clean}}\mathcal{L}_{1}
+    + \lambda_{\mathrm{SSIM}}\mathcal{L}_{\mathrm{SSIM}}
+    + \lambda_{\mathrm{seg}}\mathcal{L}_{\mathrm{Dice}}
+    + \lambda_{\mathrm{edge}}\mathcal{L}_{\mathrm{edge}}
+    + \lambda_{\mathrm{temporal}}\mathcal{L}_{\mathrm{temporal}}.
+\end{equation}
+
+\subsection{Main Hypothesis}
+
+A denoising model guided by anatomical segmentation and neighboring-frame consistency will remove speckle noise more effectively while preserving clinically important fetal-head boundaries than image-only denoising.
+
+\subsection{Proposed Experiments}
+
+\begin{itemize}
+    \item Train and test on HC-18 for 2D and 2.5D evaluation.
+    \item Train and test on CETUS for sequence evaluation.
+    \item Compare against GRN, Gaussian, Bilateral, TV-Chambolle, and 3D NLM.
+    \item Report PSNR, SSIM, RMSE, Dice, IoU, HD95, EPI, and boundary error.
+    \item Measure fetal-head circumference error where annotations and pixel-size metadata are available.
+\end{itemize}
+
+\subsection{Ablation Studies}
+
+\begin{itemize}
+    \item Remove segmentation loss.
+    \item Remove temporal consistency loss.
+    \item Remove edge loss.
+    \item Compare synthetic noise with realistic noise.
+    \item Compare single-frame GRN with 2.5D GRN.
+\end{itemize}
+
+\section{Expected Contribution}
+
+The expected contribution is a task-aware ultrasound enhancement framework that does not treat denoising as simple intensity smoothing. It uses anatomical supervision and sequence information to remove speckle noise while preserving structures needed for segmentation and measurement.
+
+The research should clearly distinguish:
+\begin{itemize}
+    \item explicit denoising, as in noisy-to-clean GRN training;
+    \item indirect smoothing through 3D reconstruction, as may occur in MedGS or UltraGS; and
+    \item clinical usefulness, measured through anatomy and measurement accuracy.
+\end{itemize}
+
+\section{Current Workspace and Fair Comparisons}
+
+For the current datasets, the fairest comparisons are:
+\begin{itemize}
+    \item CETUS sequence: GRN, MedGS, UltraGS, classical filters, and 3D NLM;
+    \item HC-18 independent 2D images: GRN and classical 2D filters; and
+    \item HC-18 converted into a 3D format: technically possible, but not scientifically fair without real camera poses.
+\end{itemize}
+
+\section{Conclusion}
+
+UltraGS, MedGS, and GRN should be treated as complementary foundations. UltraGS contributes ultrasound-aware 3D image processing, MedGS contributes anatomical and geometric consistency, and GRN contributes explicit image enhancement coupled with segmentation. The most promising next step is a 2.5D, anatomy-guided, task-aware denoising model evaluated on both image fidelity and clinical anatomy preservation.
+
+\end{document}

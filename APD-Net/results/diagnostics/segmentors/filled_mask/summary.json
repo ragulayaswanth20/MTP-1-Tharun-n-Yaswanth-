@@ -1,0 +1,21 @@
+{
+  "target_mode": "filled_mask",
+  "best_epoch": 44,
+  "threshold": 0.4,
+  "images": 200,
+  "target_dice": 0.9686280400949895,
+  "target_iou": 0.943974832334296,
+  "target_hd95_pixels": 0.5171943348477342,
+  "target_asd_pixels": 0.21889178415382546,
+  "contour_dice": 0.20540479258419375,
+  "contour_iou": 0.11744010024729343,
+  "contour_hd95_pixels": 5.912638624942696,
+  "contour_asd_pixels": 1.9962045454530233,
+  "boundary_f1_1px": 0.4877629233751871,
+  "boundary_f1_2px": 0.6975951571435408,
+  "boundary_f1_3px": 0.8499210739441488,
+  "boundary_f1_5px": 0.9574686505272443,
+  "hc_predicted_mm": 172.6905832429059,
+  "hc_error_mm": 2.199097040467348,
+  "hc_error_mm_median": 1.4900131155786625
+}

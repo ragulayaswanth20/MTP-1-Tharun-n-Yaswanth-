@@ -1,0 +1,170 @@
+
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage{array}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
+\title{APD-Net: Anatomy-Preserving Speckle Denoising for HC18 Ultrasound}
+\author{HC18 Research Project}
+\date{September 2026}
+\newcommand{\path}[1]{\texttt{\detokenize{#1}}}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+This report documents the first reproducible implementation of APD-Net, an Anatomy-Preserving Speckle Denoising Network, for the HC18 fetal-head ultrasound dataset. The implementation uses controlled synthetic multiplicative speckle because HC18 does not contain paired noisy and clean clinical acquisitions. Results are therefore reported as synthetic speckle reconstruction results, not real-world ground-truth denoising results. The official HC18 test set was kept isolated.
+\end{abstract}
+\tableofcontents
+\newpage
+
+\section{Research Objective}
+The research question is whether ultrasound enhancement can reduce speckle while preserving anatomically important fetal-head structures and supporting downstream segmentation. The project evaluates image fidelity and records the distinction between a pseudo-clean synthetic reference and a real clinical ultrasound image.
+
+\section{Dataset Audit and Leakage Policy}
+The local HC18 source is \path{../Ultrasound_Dataset/HC-18_Fetus head dataset/}. The audit found:
+\begin{itemize}
+	\item 999 labeled training ultrasound images;
+	\item 999 corresponding \path{*_Annotation.png} masks;
+	\item 335 official test images referenced by \path{test_set.zip};
+	\item no corrupted training images;
+	\item no missing training masks;
+	\item no exact duplicate training image files;
+	\item 999 matching training metadata rows; and
+	\item no patient identifiers in the available metadata.
+\end{itemize}
+
+Most training images are $800\times540$, but 24 images have slightly different dimensions. The loader resizes images and masks to $256\times256$ while preserving the pixel-size and head-circumference metadata. The image-level split contains 799 training images and 200 validation images, generated with seed 20260920. The absence of patient identifiers is a limitation: patient-level splitting could not be performed.
+
+The official test set is not used for training, validation, hyperparameter selection, or the results below. Audit output is saved in \path{reports/dataset_report.json} and \path{reports/dataset_report.csv} in the parent HC18 project; split references are in \path{../HC18_Research/splits/}.
+
+\section{Synthetic Speckle Protocol}
+HC18 does not provide a true clean target for each real noisy image. For the controlled experiment, the original image is treated only as a pseudo-clean reference:
+\begin{equation}
+	I_{\mathrm{noisy}} = \operatorname{clip}\left(I_{\mathrm{reference}}(1+n),0,1\right),
+	\qquad n\sim\mathcal{N}(0,\sigma^2),
+\end{equation}
+with $\sigma=0.2$. The original image remains a real ultrasound image, not a proven noise-free image. Seeds are fixed for reproducibility.
+
+\section{APD-Net Implementation}
+APD-Net is a working project name and not a claim of established novelty. The current model contains:
+\begin{itemize}
+	\item a residual feature encoder;
+	\item a multi-scale block with $3\times3$, $5\times5$, and dilated convolutions;
+	\item a frequency branch based on the magnitude of the 2D real FFT;
+	\item an Anatomy Attention Module with channel and spatial attention; and
+	\item an image residual head and auxiliary edge head.
+\end{itemize}
+
+The current Stage 1 implementation predicts an image residual and reconstructs a bounded denoised image. The segmentor and edge head are exposed as modular components for the next joint-training phase.
+
+\subsection{Loss}
+The implemented configurable loss contains:
+\begin{equation}
+\mathcal{L}_{\mathrm{total}} =
+\lambda_{\mathrm{pixel}}\mathcal{L}_{\mathrm{SmoothL1}}+
+\lambda_{\mathrm{ssim}}\mathcal{L}_{\mathrm{SSIM}}+
+\lambda_{\mathrm{edge}}\mathcal{L}_{\mathrm{gradient}}+
+\lambda_{\mathrm{lap}}\mathcal{L}_{\mathrm{laplacian}}+
+\lambda_{\mathrm{speckle}}\mathcal{L}_{\mathrm{log}}+
+\lambda_{\mathrm{frequency}}\mathcal{L}_{\mathrm{FFT}}.
+\end{equation}
+The initial configuration is stored in \path{configs/apdnet.yaml}. Segmentation feedback is reserved for the joint-training stage and is not falsely included in the Stage 1 result.
+
+\section{Reproducible Commands}
+From the \path{APD-Net/} directory:
+\begin{verbatim}
+python scripts/train_apd.py --config configs/apdnet.yaml
+python scripts/evaluate_apd.py --config configs/apdnet.yaml
+\end{verbatim}
+The Stage 1 checkpoint is \path{checkpoints/apd_stage1_best.pt}. Metrics are written to \path{results/apd_metrics.json} and \path{results/apd_metrics.csv}. The model implementation is \path{models/apdnet.py}; the dataset loader is \path{datasets/hc18_dataset.py}; and the loss is \path{losses/total_loss.py}.
+
+\section{Measured Synthetic Reconstruction Results}
+The evaluation uses 200 held-out validation images. Values are means across images; they are not real-clean clinical denoising measurements.
+
+\begin{table}[h]
+\centering
+\caption{APD-Net versus the synthetic noisy baseline on HC18 validation images.}
+\begin{tabular}{lrrrr}
+\toprule
+Method & PSNR (dB) $\uparrow$ & SSIM $\uparrow$ & MAE $\downarrow$ & Gradient error $\downarrow$ \\
+\midrule
+Synthetic noisy & 27.11 & 0.8152 & 0.02527 & 0.03624 \\
+APD-Net Stage 1 & 34.51 & 0.9494 & 0.01122 & 0.01408 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Under this synthetic corruption protocol, APD-Net improved the measured reconstruction metrics over the corrupted reference. This is an algorithmic validation result only. It does not establish clinical effectiveness, generalization to real speckle, or superiority over all baselines.
+
+\section{GRN Versus APD-Net Comparison}
+To compare the proposed framework with GRN fairly, both models were evaluated on the same 200-image HC18 validation split, using the same $\sigma=0.2$ synthetic multiplicative corruption and the same image-level metrics. GRN was retrained for 20 epochs using the generator, PatchGAN discriminator, and segmentor implementation already present in the workspace. Its expected input normalization to $[-1,1]$ was applied explicitly at the comparison boundary.
+
+\begin{table}[h]
+\centering
+\caption{Fair GRN versus APD-Net synthetic speckle reconstruction comparison.}
+\label{tab:grn-apd}
+\begin{tabular}{lrrrr}
+\toprule
+Method & PSNR (dB) $\uparrow$ & SSIM $\uparrow$ & MAE $\downarrow$ & Gradient error $\downarrow$ \\
+\midrule
+Noisy baseline & 27.11 & 0.8151 & 0.02528 & 0.03626 \\
+GRN & 33.59 & 0.9273 & 0.01262 & 0.01562 \\
+APD-Net & \textbf{34.51} & \textbf{0.9494} & \textbf{0.01122} & \textbf{0.01409} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Under this single validation run, APD-Net produced higher PSNR and SSIM and lower MAE and gradient error than the retrained GRN comparison model. The difference is descriptive rather than a statistical superiority claim: the GRN adversarial run showed CUDA-dependent variation across repeated executions, so repeated seeds, matched parameter budgets, ablations, and downstream segmentation evaluation are required. GRN is treated here as a GRN-inspired implementation using the available workspace code, not as a verified exact reproduction of every published GRN experiment.
+
+The comparison artifacts are \path{results/grn_vs_apd.json}, \path{results/grn_vs_apd.csv}, and \path{checkpoints/grn_comparison.pt}. The APD-Net checkpoint is \path{checkpoints/apd_stage1_best.pt}.
+
+\section{Interpretation}
+The result is consistent with the intended mechanism: the network learns a noisy-to-reference mapping using pixel, structural, gradient, log-domain, and frequency constraints. The frequency and attention branches are architectural hypotheses whose individual contribution still requires ablation. The current result should not be interpreted as proof that every component is useful.
+
+\section{Required Comparisons and Next Experiments}
+The guide requires the following experiments before a final research claim:
+\begin{enumerate}
+	\item Train a stronger segmentation baseline and evaluate original, noisy, and denoised inputs using Dice, IoU, HD95, ASD, and boundary error.
+	\item Add Stage 2 segmentor pretraining and Stage 3 joint APD-Net--segmentor training.
+	\item Implement and compare median, Gaussian, bilateral, Wiener/NLM, DnCNN, plain U-Net, residual U-Net, and a documented GRN-inspired baseline.
+	\item Run ablations removing SSIM, edge, speckle, frequency, attention, and segmentation terms.
+	\item Add self-supervised real-ultrasound training without reporting invented PSNR or SSIM.
+	\item Evaluate head-circumference error using predicted contours and training pixel-size metadata.
+	\item Repeat experiments across seeds 42, 43, and 44, then report mean and standard deviation.
+	\item Add statistical tests, failure-case figures, complexity measurements, and cross-dataset experiments.
+\end{enumerate}
+
+\section{Limitations}
+\begin{itemize}
+	\item The synthetic reference is not a true clean clinical target.
+	\item Only one noise model, one strength, one split, and one short Stage 1 training run are reported.
+	\item The official test set has not been evaluated and remains isolated.
+	\item Joint segmentation feedback is not yet part of the measured APD-Net result.
+	\item Full baseline, ablation, self-supervised, statistical, and cross-dataset suites are not yet complete.
+	\item No novelty or state-of-the-art claim is made; a literature review is required before such claims.
+\end{itemize}
+
+\section{Project Status}
+\begin{longtable}{p{0.55\textwidth}p{0.25\textwidth}}
+\toprule
+Component & Status \\
+\midrule
+Dataset audit, configurable loader, deterministic split & Complete \\
+APD-Net spatial, frequency, attention, and residual components & Complete \\
+Synthetic speckle generation & Complete \\
+Configurable multi-objective Stage 1 loss & Complete \\
+Stage 1 training and validation result & Complete \\
+Segmentation-guided joint training & Pending \\
+Full baseline suite and ablations & Pending \\
+Self-supervised real-ultrasound experiment & Pending \\
+Final test evaluation & Intentionally withheld \\
+\bottomrule
+\end{longtable}
+
+\section{Conclusion}
+The guide has been converted into an isolated APD-Net project and a first reproducible Stage 1 experiment. APD-Net reached 34.51 dB PSNR, 0.9494 SSIM, and 0.0112 MAE on 200 HC18 validation images corrupted with synthetic multiplicative speckle. These values are measured synthetic-reference results, not clinical denoising claims. The next scientifically important step is joint segmentation-aware training and downstream evaluation, followed by the planned baselines and ablations.
+
+\end{document}

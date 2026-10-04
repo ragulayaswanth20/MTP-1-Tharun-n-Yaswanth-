@@ -1,0 +1,10 @@
+numpy
+Pillow
+torch
+PyYAML
+scikit-image
+opencv-python
+matplotlib
+scipy
+pandas
+pytest

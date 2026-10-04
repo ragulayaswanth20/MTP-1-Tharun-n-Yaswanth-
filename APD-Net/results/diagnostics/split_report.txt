@@ -1,0 +1,7 @@
+HC18 split audit
+Training images: 799
+Validation images: 200
+Official test images listed: 335
+Grouping metadata: unavailable (split fields have no patient/examination/group identifier).
+Leakage status: image-level separation was checked; examination-level separation cannot be verified.
+Official test images were not loaded, evaluated, or used for model selection.

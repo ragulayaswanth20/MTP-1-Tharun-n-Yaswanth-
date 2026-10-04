@@ -1,0 +1,58 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.venv/
+venv/
+env/
+build/
+dist/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*
+
+# Raw datasets and downloaded archives
+Datasets/
+Ultrasound_Dataset/
+data/
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
+# Model weights and training artifacts
+**/checkpoints/
+**/model_weights/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.engine
+output/
+**/runs/
+**/wandb/
+**/mlruns/
+**/tensorboard*/
+*.log
+
+# Research paper PDFs are not redistributed with the source repository
+Papers/*.pdf

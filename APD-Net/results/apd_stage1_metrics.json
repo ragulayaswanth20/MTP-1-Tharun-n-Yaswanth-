@@ -1,0 +1,32 @@
+{
+  "dataset": "HC18",
+  "split": "validation",
+  "synthetic_reference": true,
+  "results": [
+    {
+      "epoch": 1,
+      "train_loss": 0.5065776345133781,
+      "val_loss": 0.2839659571647644
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.22178206503391265,
+      "val_loss": 0.18978565096855163
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.1622792102396488,
+      "val_loss": 0.1468853944540024
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.1432164389640093,
+      "val_loss": 0.12606085509061812
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.14994916401803493,
+      "val_loss": 0.11725736945867539
+    }
+  ]
+}

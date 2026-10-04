@@ -1,0 +1,22 @@
+section,metric,value
+training,count,999
+training,dimensions,"{""800x540"": 975, ""786x542"": 1, ""782x542"": 1, ""794x544"": 1, ""738x541"": 1, ""780x544"": 1, ""783x543"": 1, ""783x541"": 1, ""797x541"": 1, ""790x539"": 1, ""800x542"": 5, ""799x563"": 1, ""780x539"": 1, ""794x543"": 1, ""788x545"": 1, ""798x541"": 1, ""789x540"": 1, ""796x542"": 1, ""791x544"": 1, ""789x545"": 1, ""796x544"": 1}"
+training,modes,"{""L"": 999}"
+training,intensity_min,0
+training,intensity_max,254
+training,corrupted_files,0
+training,exact_duplicate_groups,0
+test_extracted,count,0
+test_extracted,dimensions,{}
+test_extracted,modes,{}
+test_extracted,intensity_min,
+test_extracted,intensity_max,
+test_extracted,corrupted_files,0
+test_extracted,exact_duplicate_groups,0
+test_archive,count,335
+test_archive,dimensions,{}
+test_archive,modes,{}
+test_archive,intensity_min,
+test_archive,intensity_max,
+test_archive,corrupted_files,0
+test_archive,exact_duplicate_groups,0

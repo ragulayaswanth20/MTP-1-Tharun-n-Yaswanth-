@@ -1,0 +1,7 @@
+dataset,source_images_cases,annotation_mask_files,images_evaluated
+Benign_separate,109,109,109
+Malignant_separate,123,123,123
+BUSI_benign,437,454,437
+BUSI_malignant,210,211,210
+BUSI_normal,133,133,133
+BrEaST,256,266,256

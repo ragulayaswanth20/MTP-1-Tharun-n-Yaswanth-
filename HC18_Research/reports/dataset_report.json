@@ -1,0 +1,98 @@
+{
+  "dataset_root": "/home/teaching/MTP_1_Sneha/Denoising/Ultrasound_Dataset/HC-18_Fetus head dataset",
+  "test_policy": "Official test images are audited by archive metadata only and are never used for training or validation.",
+  "splits": {
+    "training": {
+      "count": 999,
+      "dimensions": {
+        "800x540": 975,
+        "786x542": 1,
+        "782x542": 1,
+        "794x544": 1,
+        "738x541": 1,
+        "780x544": 1,
+        "783x543": 1,
+        "783x541": 1,
+        "797x541": 1,
+        "790x539": 1,
+        "800x542": 5,
+        "799x563": 1,
+        "780x539": 1,
+        "794x543": 1,
+        "788x545": 1,
+        "798x541": 1,
+        "789x540": 1,
+        "796x542": 1,
+        "791x544": 1,
+        "789x545": 1,
+        "796x544": 1
+      },
+      "modes": {
+        "L": 999
+      },
+      "intensity_min": 0,
+      "intensity_max": 254,
+      "intensity_mean": {
+        "min": 11.019113425925926,
+        "max": 82.66056018518519,
+        "mean": 39.7764060805075
+      },
+      "mask_area_fraction": {
+        "min": 0.0025833333333333333,
+        "max": 0.010486009382706893,
+        "mean": 0.007424976363596197
+      },
+      "corrupted_files": [],
+      "exact_duplicate_groups": []
+    },
+    "test_extracted": {
+      "count": 0,
+      "dimensions": {},
+      "modes": {},
+      "intensity_min": null,
+      "intensity_max": null,
+      "intensity_mean": {
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "mask_area_fraction": {
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "corrupted_files": [],
+      "exact_duplicate_groups": []
+    },
+    "test_archive": {
+      "count": 335,
+      "filenames": [
+        "100_HC.png",
+        "101_HC.png",
+        "102_2HC.png",
+        "103_HC.png",
+        "104_HC.png",
+        "105_3HC.png",
+        "106_HC.png",
+        "107_3HC.png",
+        "108_HC.png",
+        "109_HC.png"
+      ]
+    }
+  },
+  "correspondence": {
+    "training_missing_masks": [],
+    "training_missing_csv_rows": [],
+    "training_extra_csv_rows": [],
+    "test_missing_csv_rows": [],
+    "test_extra_csv_rows": []
+  },
+  "metadata": {
+    "training_rows": 999,
+    "test_rows": 335,
+    "pixel_size_min": 0.04941494158,
+    "pixel_size_max": 0.393280178308,
+    "head_circumference_min_mm": 44.3,
+    "head_circumference_max_mm": 346.4
+  }
+}

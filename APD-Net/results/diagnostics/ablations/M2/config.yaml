@@ -1,0 +1,70 @@
+seed: 42
+image_size: 256
+batch_size: 4
+num_workers: 4
+epochs: 20
+base_channels: 32
+num_classes: 2
+segmentor_channels:
+- 16
+- 32
+- 64
+- 128
+- 256
+learning_rates:
+  generator: 5.0e-05
+  segmentor: 2.0e-05
+  discriminator: 5.0e-05
+noise:
+  model: gaussian
+  train_sigma_min: 0.05
+  train_sigma_max: 0.3
+  evaluation_sigmas:
+  - 0.05
+  - 0.1
+  - 0.15
+  - 0.2
+  - 0.25
+  - 0.3
+  evaluation_seed: 4200
+ablation:
+  spatial_branch: false
+  frequency_branch: true
+  anatomy_attention: false
+  edge_head: false
+  edge_feedback: false
+  edge_supervision: false
+  segmentation_feedback: false
+  patchgan: false
+loss:
+  lambda_restore: 1.0
+  lambda_l1: 1.0
+  lambda_ssim: 1.0
+  lambda_frequency: 0.1
+  lambda_edge: 1.0
+  lambda_edge_dice: 1.0
+  edge_positive_weight: 20.0
+  lambda_seg: 1.0
+  lambda_seg_ce: 1.0
+  segmentation_foreground_weight: 20.0
+  lambda_adv: 0.01
+  edge_target_mode: annotation
+data:
+  train_split: ../HC18_Research/splits/train.csv
+  val_split: ../HC18_Research/splits/val.csv
+initialize_generator_from: checkpoints/diagnostics/best_apd_reconstruction.pt
+initialize_segmentor_from: checkpoints/diagnostics/best_segmentor_reference.pt
+gradient_diagnostic_steps_per_epoch: 1
+checkpoint_criteria:
+  segmentation_metric: enhanced_seg_boundary_f1_2px
+  reconstruction_psnr_min: 25.0
+  reconstruction_psnr_max: 40.0
+  joint_reconstruction_weight: 0.5
+  joint_segmentation_weight: 0.5
+checkpoint_reconstruction: checkpoints/diagnostics/ablations/M2_best_reconstruction.pt
+checkpoint_segmentation: checkpoints/diagnostics/ablations/M2_best_segmentation.pt
+checkpoint_joint: checkpoints/diagnostics/ablations/M2_best_joint.pt
+results_dir: results/diagnostics/ablations/M2
+example_sigma: 0.2
+num_visual_examples: 5
+train_segmentor: true
